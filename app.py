@@ -262,6 +262,16 @@ def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
+@app.route("/sw.js")
+def service_worker():
+    # Servido na raiz (não em /static/) para que o service worker consiga
+    # controlar o app inteiro (scope "/"), permitindo instalar como PWA.
+    response = send_from_directory(os.path.join(BASE_DIR, "static"), "sw.js")
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # --------------------------------------------------------------------------
 # Admin (professor)
 # --------------------------------------------------------------------------

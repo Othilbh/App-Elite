@@ -27,6 +27,12 @@ Antes de usar de verdade, troque a senha do professor: defina a variável de amb
 ADMIN_PASSWORD="sua-senha-aqui" python app.py
 ```
 
+## Instalar como app no celular (PWA)
+
+O app agora tem suporte a PWA (Progressive Web App): depois de publicado com HTTPS, o aluno pode abrir o link no celular e usar a opção do navegador "Adicionar à tela inicial" (Android/Chrome) ou "Adicionar à Tela de Início" (iPhone/Safari). Isso cria um ícone igual ao de um app normal, que abre em tela cheia, sem barra de endereço.
+
+Não precisa fazer nada extra pra isso funcionar — já está configurado (`static/manifest.json`, `static/sw.js`, ícones em `static/icons/`). Só funciona com HTTPS, então é preciso estar publicado (localhost também funciona para teste).
+
 ## Colocar no ar para os alunos acessarem de qualquer lugar
 
 Rodando só na sua máquina, o app só funciona na mesma rede Wi-Fi. Para os alunos acessarem pelo celular de qualquer lugar, hospede em um serviço gratuito/simples, por exemplo:
