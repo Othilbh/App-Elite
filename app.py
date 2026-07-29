@@ -458,6 +458,10 @@ def fechar_ano():
     return redirect(url_for("admin_campeoes"))
 
 
+# Cria as tabelas do banco assim que o módulo é carregado — precisa rodar
+# tanto com "python app.py" (local) quanto com "gunicorn app:app" (produção),
+# já que o gunicorn nunca executa o bloco "if __name__ == '__main__'" abaixo.
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     app.run(host="0.0.0.0", port=5000, debug=True)
