@@ -1,4 +1,5 @@
 import os
+import random
 import sqlite3
 from collections import defaultdict
 from datetime import date, datetime
@@ -50,6 +51,7 @@ def init_db():
             name TEXT NOT NULL,
             nickname TEXT,
             photo TEXT,
+            pin TEXT,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
@@ -74,6 +76,11 @@ def init_db():
         );
         """
     )
+    # Migração segura: bancos criados antes da coluna "pin" existir.
+    try:
+        db.execute("ALTER TABLE students ADD COLUMN pin TEXT")
+    except sqlite3.OperationalError:
+        pass  # coluna já existe
     db.commit()
     db.close()
 
@@ -83,6 +90,26 @@ def init_db():
 # --------------------------------------------------------------------------
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
+
+
+def generate_pin():
+    return f"{random.randint(0, 9999):04d}"
+
+
+def is_student_verified(student_id):
+    """Alunos sem PIN definido (cadastro antigo) passam direto, para não
+    trancar ninguém fora. Quem tem PIN precisa ter verificado nesta sessão."""
+    student = get_student(student_id)
+    if not student or not student["pin"]:
+        return True
+    return student_id in session.get("verified_students", [])
+
+
+def mark_student_verified(student_id):
+    verified = session.get("verified_students", [])
+    if student_id not in verified:
+        verified.append(student_id)
+    session["verified_students"] = verified
 
 
 def today_str():
@@ -184,12 +211,35 @@ def index():
     return render_template("index.html", students=students, top3=ranking_year)
 
 
+@app.route("/aluno/<int:student_id>/entrar", methods=["GET", "POST"])
+def aluno_entrar(student_id):
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("index"))
+
+    if is_student_verified(student_id):
+        return redirect(url_for("aluno_dashboard", student_id=student_id))
+
+    if request.method == "POST":
+        pin = request.form.get("pin", "").strip()
+        if pin == student["pin"]:
+            mark_student_verified(student_id)
+            return redirect(url_for("aluno_dashboard", student_id=student_id))
+        flash("PIN incorreto. Peça o seu PIN ao professor.", "error")
+
+    return render_template("aluno_entrar.html", student=student)
+
+
 @app.route("/aluno/<int:student_id>")
 def aluno_dashboard(student_id):
     student = get_student(student_id)
     if not student:
         flash("Aluno não encontrado.", "error")
         return redirect(url_for("index"))
+
+    if not is_student_verified(student_id):
+        return redirect(url_for("aluno_entrar", student_id=student_id))
 
     week, month, year = counts_for_student(student_id)
 
@@ -222,6 +272,9 @@ def fazer_checkin(student_id):
     if not student:
         flash("Aluno não encontrado.", "error")
         return redirect(url_for("index"))
+
+    if not is_student_verified(student_id):
+        return redirect(url_for("aluno_entrar", student_id=student_id))
 
     db = get_db()
     existing = db.execute(
@@ -369,9 +422,16 @@ def admin_novo_aluno():
 
     name = request.form.get("name", "").strip()
     nickname = request.form.get("nickname", "").strip()
+    pin = request.form.get("pin", "").strip()
     if not name:
         flash("O nome do aluno é obrigatório.", "error")
         return redirect(url_for("admin_alunos"))
+
+    if pin and (not pin.isdigit() or len(pin) != 4):
+        flash("O PIN precisa ter exatamente 4 números. Deixe em branco para gerar automaticamente.", "error")
+        return redirect(url_for("admin_alunos"))
+    if not pin:
+        pin = generate_pin()
 
     photo_filename = None
     file = request.files.get("photo")
@@ -383,11 +443,33 @@ def admin_novo_aluno():
 
     db = get_db()
     db.execute(
-        "INSERT INTO students (name, nickname, photo, active, created_at) VALUES (?, ?, ?, 1, ?)",
-        (name, nickname or None, photo_filename, datetime.now().isoformat()),
+        "INSERT INTO students (name, nickname, photo, pin, active, created_at) VALUES (?, ?, ?, ?, 1, ?)",
+        (name, nickname or None, photo_filename, pin, datetime.now().isoformat()),
     )
     db.commit()
-    flash(f"Aluno {name} cadastrado!", "success")
+    flash(f"Aluno {name} cadastrado! PIN de acesso: {pin} (repasse esse número a ele).", "success")
+    return redirect(url_for("admin_alunos"))
+
+
+@app.route("/admin/alunos/<int:student_id>/novo-pin", methods=["POST"])
+def admin_novo_pin(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    new_pin = generate_pin()
+    db = get_db()
+    db.execute("UPDATE students SET pin = ? WHERE id = ?", (new_pin, student_id))
+    db.commit()
+    # Invalida a verificação de sessão anterior para esse aluno, se houver.
+    verified = session.get("verified_students", [])
+    if student_id in verified:
+        verified.remove(student_id)
+        session["verified_students"] = verified
+    flash(f"Novo PIN de {student['nickname'] or student['name']}: {new_pin}", "success")
     return redirect(url_for("admin_alunos"))
 
 

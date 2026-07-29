@@ -18,6 +18,9 @@
     <label for="photo">Foto</label>
     <input type="file" id="photo" name="photo" accept="image/*">
 
+    <label for="pin">PIN de acesso (4 números, opcional — se deixar em branco, um PIN é gerado automaticamente)</label>
+    <input type="text" id="pin" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="ex: 1234">
+
     <button type="submit" class="btn btn-primary">Cadastrar</button>
   </form>
 </section>
@@ -35,8 +38,12 @@
         <div class="student-info">
           <strong>{{ s.nickname or s.name }}</strong>
           {% if s.nickname %}<span class="muted">{{ s.name }}</span>{% endif %}
+          {% if s.pin %}<span class="muted">PIN: {{ s.pin }}</span>{% endif %}
           {% if not s.active %}<span class="badge badge-rejected">Inativo</span>{% endif %}
         </div>
+        <form method="post" action="{{ url_for('admin_novo_pin', student_id=s.id) }}">
+          <button type="submit" class="btn btn-small" style="background:#262a33;color:var(--text);">Gerar novo PIN</button>
+        </form>
         {% if s.active %}
           <form method="post" action="{{ url_for('admin_inativar_aluno', student_id=s.id) }}">
             <button type="submit" class="btn btn-reject btn-small">Remover</button>

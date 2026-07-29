@@ -3,21 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}Check-in de Treinos{% endblock %}</title>
+<title>{% block title %}Elite Hapkido — Check-in{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
 <!-- PWA: permite instalar o app na tela inicial do celular -->
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#ff6a3d">
+<meta name="theme-color" content="#11141b">
 <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Treinos">
+<meta name="apple-mobile-web-app-title" content="Elite Hapkido">
 </head>
 <body>
 <header class="topbar">
-  <a href="{{ url_for('index') }}" class="brand">🏋️ Check-in de Treinos</a>
+  <a href="{{ url_for('index') }}" class="brand">🥋 Elite Hapkido</a>
   <nav>
     <a href="{{ url_for('ranking') }}">Ranking</a>
     {% if is_admin %}

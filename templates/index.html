@@ -28,7 +28,7 @@
 
 <section class="student-grid">
   {% for s in students %}
-    <a class="student-card" href="{{ url_for('aluno_dashboard', student_id=s.id) }}">
+    <a class="student-card" href="{{ url_for('aluno_entrar', student_id=s.id) }}">
       {% if s.photo %}
         <img src="{{ url_for('uploaded_file', filename=s.photo) }}" alt="{{ s.nickname or s.name }}">
       {% else %}
