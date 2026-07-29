@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Check-in de Treinos{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a href="{{ url_for('index') }}" class="brand">🏋️ Check-in de Treinos</a>
+  <nav>
+    <a href="{{ url_for('ranking') }}">Ranking</a>
+    {% if is_admin %}
+      <a href="{{ url_for('admin_dashboard') }}">Painel</a>
+      <a href="{{ url_for('admin_alunos') }}">Alunos</a>
+      <a href="{{ url_for('admin_campeoes') }}">Campeões</a>
+      <a href="{{ url_for('admin_logout') }}">Sair</a>
+    {% else %}
+      <a href="{{ url_for('admin_login') }}">Sou o professor</a>
+    {% endif %}
+  </nav>
+</header>
+
+<main class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-wrap">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  <span>Feito para engajar quem treina 💪</span>
+</footer>
+</body>
+</html>

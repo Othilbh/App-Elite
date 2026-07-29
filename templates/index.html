@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Quem é você?{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Quem vai treinar hoje?</h1>
+  <p>Toque na sua foto para fazer seu check-in.</p>
+</section>
+
+{% if top3 %}
+<section class="podium">
+  <h2>🏆 Top 3 do ano</h2>
+  <div class="podium-row">
+    {% for p in top3 %}
+      <div class="podium-item">
+        {% if p.photo %}
+          <img src="{{ url_for('uploaded_file', filename=p.photo) }}" alt="{{ p.name }}">
+        {% else %}
+          <div class="avatar-placeholder">{{ p.name[0] }}</div>
+        {% endif %}
+        <span class="podium-name">{{ p.name }}</span>
+        <span class="podium-count">{{ p.count }} treinos</span>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="student-grid">
+  {% for s in students %}
+    <a class="student-card" href="{{ url_for('aluno_dashboard', student_id=s.id) }}">
+      {% if s.photo %}
+        <img src="{{ url_for('uploaded_file', filename=s.photo) }}" alt="{{ s.nickname or s.name }}">
+      {% else %}
+        <div class="avatar-placeholder">{{ (s.nickname or s.name)[0] }}</div>
+      {% endif %}
+      <span>{{ s.nickname or s.name }}</span>
+    </a>
+  {% else %}
+    <p class="empty-state">Nenhum aluno cadastrado ainda. Peça ao professor para te cadastrar no painel.</p>
+  {% endfor %}
+</section>
+
+{% endblock %}

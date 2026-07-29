@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ student.nickname or student.name }}{% endblock %}
+{% block content %}
+
+<section class="profile-header">
+  {% if student.photo %}
+    <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.nickname or student.name }}">
+  {% else %}
+    <div class="avatar-placeholder big">{{ (student.nickname or student.name)[0] }}</div>
+  {% endif %}
+  <div>
+    <h1>{{ student.nickname or student.name }}</h1>
+    {% if student.nickname %}<p class="muted">{{ student.name }}</p>{% endif %}
+  </div>
+</section>
+
+<section class="stats-row">
+  <div class="stat-card">
+    <span class="stat-number">{{ week }}</span>
+    <span class="stat-label">Esta semana</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ month }}</span>
+    <span class="stat-label">Este mês</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ year }}</span>
+    <span class="stat-label">Este ano</span>
+  </div>
+</section>
+
+<section class="checkin-box">
+  {% if today_checkin %}
+    {% if today_checkin.status == 'pending' %}
+      <p class="badge badge-pending">⏳ Check-in de hoje aguardando confirmação do professor</p>
+    {% elif today_checkin.status == 'approved' %}
+      <p class="badge badge-approved">✅ Presença de hoje confirmada!</p>
+    {% else %}
+      <p class="badge badge-rejected">❌ Check-in de hoje não foi confirmado</p>
+    {% endif %}
+  {% else %}
+    <form method="post" action="{{ url_for('fazer_checkin', student_id=student.id) }}">
+      <button type="submit" class="btn btn-primary btn-big">Registrar treino de hoje</button>
+    </form>
+  {% endif %}
+</section>
+
+{% if my_position %}
+<p class="position-note">Sua posição no ranking do mês: <strong>#{{ my_position }}</strong></p>
+{% endif %}
+
+<section class="mini-ranking">
+  <h2>Ranking do mês</h2>
+  <ol class="ranking-list">
+    {% for r in ranking_month %}
+      <li class="{{ 'me' if r.id == student.id else '' }}">
+        <span class="rank-pos">{{ loop.index }}</span>
+        <span class="rank-name">{{ r.name }}</span>
+        <span class="rank-count">{{ r.count }}</span>
+      </li>
+    {% endfor %}
+  </ol>
+  <a href="{{ url_for('ranking', periodo='month') }}" class="link-more">Ver ranking completo →</a>
+</section>
+
+<a href="{{ url_for('index') }}" class="link-back">← Trocar de aluno</a>
+
+{% endblock %}
