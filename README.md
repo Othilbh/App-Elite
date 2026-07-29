@@ -6,17 +6,38 @@ App para os alunos registrarem presença nos treinos, com ranking semanal/mensal
 
 - **Aluno**: entra no site, toca na própria foto, digita seu **PIN de 4 números** e clica em "Registrar treino de hoje". O check-in fica pendente.
 - **Professor**: entra em "Sou o professor" (senha padrão `treino123`), vê os check-ins pendentes e confirma ou rejeita cada um. Só check-ins confirmados contam no ranking.
-- **Ranking**: página pública com abas Semana / Mês / Ano, mostrando todos os alunos ordenados por treinos confirmados.
+- **Ranking**: página pública com abas Semana / Mês / Ano, mostrando todos os alunos ordenados por treinos confirmados. O professor logado vê um link para **exportar o ranking em Excel (.xlsx)**.
 - **Prêmio anual**: no painel do professor, em "Campeões", o botão "Fechar ano" registra o aluno com mais treinos confirmados no ano como campeão, criando um histórico (Hall da Fama) para os próximos anos.
 
-### PIN individual do aluno
+### PIN individual do aluno (com bloqueio de segurança)
 
-Cada aluno tem um PIN de 4 números, para que só ele consiga fazer check-in em seu próprio nome (antes, qualquer pessoa podia tocar na foto de outro aluno).
+Cada aluno tem um PIN de 4 números, para que só ele consiga fazer check-in em seu próprio nome.
 
 - Ao cadastrar um aluno, você pode digitar um PIN específico ou deixar em branco para o sistema gerar um automaticamente.
-- O PIN de cada aluno aparece na lista em **Painel → Alunos** — é aí que você pega o número para repassar a ele (pessoalmente ou por WhatsApp).
+- O PIN de cada aluno aparece na lista em **Painel → Alunos** — é aí que você pega o número para repassar a ele.
 - Se o aluno esquecer o PIN, use o botão **"Gerar novo PIN"** na mesma tela.
+- **Bloqueio automático**: depois de 5 tentativas erradas seguidas, o acesso daquele aluno fica bloqueado por 15 minutos (evita que alguém fique tentando adivinhar o PIN de outra pessoa). O professor pode liberar na hora gerando um novo PIN.
 - Alunos cadastrados antes dessa funcionalidade existir continuam entrando sem PIN normalmente (não trava ninguém de fora).
+
+### Fotos comprimidas automaticamente
+
+Toda foto enviada no cadastro é redimensionada (no máximo 720px no lado maior) e salva como JPEG otimizado — reduz bastante o espaço ocupado, sem perda visível de qualidade num avatar de app.
+
+## Banco de dados: SQLite (local) ou Postgres (produção)
+
+O app detecta sozinho qual banco usar:
+
+- **Sem a variável de ambiente `DATABASE_URL`**: usa SQLite local (`checkin.db`), ótimo para testar na sua máquina.
+- **Com `DATABASE_URL` definida**: usa Postgres — é isso que você deve configurar em produção, para o histórico e as fotos não serem apagados a cada deploy.
+
+### Onde conseguir um Postgres gratuito
+
+Duas opções simples:
+
+1. **Supabase** (recomendado se você já usa Supabase em outros projetos seus): crie um novo projeto (ou uma tabela separada num projeto existente), vá em **Project Settings → Database → Connection string** (modo "URI"), copie a string e cole como `DATABASE_URL` no Render.
+2. **Render Postgres**: no painel do Render, **New → PostgreSQL**. Ele te dá uma "Internal Database URL" — copie e cole como variável `DATABASE_URL` no seu Web Service. **Atenção**: no plano gratuito do Render, o banco Postgres expira depois de um tempo (histórico costumava ser ~30 dias) e é apagado — para uso contínuo, ou paga o plano do banco, ou usa o Supabase, que tem um free tier mais duradouro. Vale conferir os termos atuais direto no site do Render/Supabase antes de decidir, pois esse tipo de política muda com frequência.
+
+Depois de configurar `DATABASE_URL` e reiniciar o serviço, o app cria as tabelas sozinho no Postgres na primeira execução (mesma lógica do `init_db()` que já existia para o SQLite).
 
 ## Rodar localmente (para testar)
 
@@ -37,7 +58,7 @@ ADMIN_PASSWORD="sua-senha-aqui" python app.py
 
 ## Instalar como app no celular (PWA)
 
-O app tem suporte a PWA (Progressive Web App): depois de publicado com HTTPS, o aluno pode abrir o link no celular e usar a opção do navegador "Adicionar à tela inicial" (Android/Chrome) ou "Adicionar à Tela de Início" (iPhone/Safari). Isso cria um ícone igual ao de um app normal, que abre em tela cheia, sem barra de endereço.
+O app tem suporte a PWA (Progressive Web App): depois de publicado com HTTPS, o aluno pode abrir o link no celular e usar a opção do navegador "Adicionar à tela inicial" (Android/Chrome) ou "Adicionar à Tela de Início" (iPhone/Safari). Isso cria um ícone com a logo da Elite Hapkido, que abre em tela cheia, sem barra de endereço.
 
 Os arquivos necessários (`static/manifest.json`, `static/sw.js`, `static/icons/`) já estão no projeto e configurados em `templates/base.html`. Só funciona com HTTPS, então é preciso estar publicado (localhost também funciona para teste).
 
@@ -47,32 +68,33 @@ Os arquivos necessários (`static/manifest.json`, `static/sw.js`, `static/icons/
 2. Configure:
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `gunicorn app:app`
-   - Em **Environment**, adicione a variável `ADMIN_PASSWORD` com a senha que o professor vai usar (troque o valor padrão `treino123`).
-3. **⚠️ Passo crítico — disco persistente:** por padrão, o Render apaga os arquivos gravados pelo app (o banco `checkin.db` e as fotos em `static/uploads/`) a cada novo deploy ou reinício. Para as fotos e o histórico de check-ins não sumirem:
-   - No plano **Starter** (pago, ~US$7/mês) ou superior, vá em **Disks** no painel do serviço e adicione um disco persistente montado em `/opt/render/project/src` (ou ajuste `DB_PATH`/`UPLOAD_FOLDER` em `app.py` para apontar para o caminho do disco, ex: `/var/data`).
-   - No plano **Free**, não há disco persistente — o app funciona, mas cada novo deploy zera alunos, fotos e histórico. Serve bem para testar o app com a turma antes de decidir se vale investir no plano pago.
-4. Depois do primeiro deploy, acesse a URL pública (tipo `app-elite.onrender.com`), entre como professor e cadastre os alunos reais.
+   - Em **Environment**, adicione:
+     - `ADMIN_PASSWORD` com a senha que o professor vai usar (troque o valor padrão `treino123`)
+     - `DATABASE_URL` apontando para o seu Postgres (Supabase ou Render Postgres — ver seção acima). **Esse é o passo que resolve o problema de perder alunos/fotos/histórico a cada deploy.**
+3. Depois do primeiro deploy, acesse a URL pública (tipo `app-elite.onrender.com`), entre como professor e cadastre os alunos reais.
+
+⚠️ Se você pular a configuração do `DATABASE_URL`, o app funciona normalmente com SQLite, mas continua exposto a perder dados a cada novo deploy no plano gratuito do Render (o mesmo aviso de antes).
 
 ## Estrutura do projeto
 
 ```
 App-Elite/
-  app.py                  → toda a lógica (rotas, banco de dados, PIN)
+  app.py                  → toda a lógica (rotas, banco de dados, PIN, export)
   requirements.txt
   static/
     css/style.css         → visual do app
     manifest.json         → configuração do PWA
     sw.js                 → service worker (cache só de assets estáticos)
-    icons/                → ícones do PWA (192px, 512px, maskable)
+    icons/                → ícones do PWA com a logo da Elite Hapkido
     uploads/               → fotos dos alunos ficam aqui (não versionado)
   templates/               → páginas HTML
-  checkin.db               → banco de dados (criado automaticamente na 1ª execução, não versionado)
+  checkin.db               → banco SQLite local (só usado se DATABASE_URL não estiver definida; não versionado)
 ```
 
 ## Próximos passos possíveis
 
 - Notificação (WhatsApp/e-mail) quando um check-in é confirmado ou fica pendente há muito tempo.
-- Exportar ranking em PDF/planilha para divulgar o prêmio.
-- Migrar de SQLite para Postgres (Render oferece um banco Postgres gerenciado gratuito) para não depender de disco persistente e ter mais robustez.
+- Exportar também em PDF, além do Excel já disponível.
 - Versão como app nativo (Android/iOS) reaproveitando esta mesma lógica de back-end.
+
 

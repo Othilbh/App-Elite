@@ -2,10 +2,14 @@ import os
 import random
 import sqlite3
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from io import BytesIO
 
 from flask import (Flask, flash, g, redirect, render_template, request,
-                    send_from_directory, session, url_for)
+                    send_file, send_from_directory, session, url_for)
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from PIL import Image, UnidentifiedImageError
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -14,9 +18,31 @@ DB_PATH = os.path.join(BASE_DIR, "checkin.db")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
 ALLOWED_EXT = {"png", "jpg", "jpeg", "webp"}
 
+# Se DATABASE_URL estiver definida (Render/Supabase Postgres), o app usa
+# Postgres. Sem ela, cai para SQLite local — útil para testar na sua máquina.
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+USE_POSTGRES = bool(DATABASE_URL)
+
+if USE_POSTGRES:
+    import psycopg2
+    import psycopg2.extras
+
+    IntegrityError = psycopg2.IntegrityError
+else:
+    IntegrityError = sqlite3.IntegrityError
+
 # Senha padrão do painel do professor/admin. TROQUE antes de usar de verdade!
 # Pode também ser definida pela variável de ambiente ADMIN_PASSWORD.
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "treino123")
+
+# Limites de tentativas de PIN (proteção simples contra tentativa e erro).
+MAX_PIN_ATTEMPTS = 5
+LOCKOUT_MINUTES = 15
+
+# Compressão de fotos: qualquer foto enviada é redimensionada e reencodada
+# para não pesar o armazenamento (importante em planos gratuitos).
+MAX_PHOTO_DIMENSION = 720
+PHOTO_JPEG_QUALITY = 82
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "troque-esta-chave-em-producao")
@@ -25,13 +51,45 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
 # --------------------------------------------------------------------------
-# Banco de dados
+# Banco de dados — camada fina que funciona com SQLite (dev local) ou
+# Postgres (produção), usando sempre "?" como marcador de parâmetro no
+# código e traduzindo para "%s" quando o backend é Postgres.
 # --------------------------------------------------------------------------
+class DB:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=()):
+        cur = self._conn.cursor()
+        if USE_POSTGRES:
+            sql = sql.replace("?", "%s")
+        cur.execute(sql, params)
+        return cur
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+
+def _raw_connect():
+    if USE_POSTGRES:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn.autocommit = False
+        return conn
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+        g.db = DB(_raw_connect())
     return g.db
 
 
@@ -43,6 +101,50 @@ def close_db(exception=None):
 
 
 def init_db():
+    if USE_POSTGRES:
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS students (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                nickname TEXT,
+                photo TEXT,
+                pin TEXT,
+                pin_attempts INTEGER NOT NULL DEFAULT 0,
+                pin_locked_until TEXT,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS checkins (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students (id),
+                workout_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                reviewed_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS champions (
+                id SERIAL PRIMARY KEY,
+                year INTEGER NOT NULL UNIQUE,
+                student_id INTEGER NOT NULL REFERENCES students (id),
+                total_checkins INTEGER NOT NULL,
+                closed_at TEXT NOT NULL
+            );
+            """
+        )
+        # Migração seguindo para bancos criados antes destas colunas existirem.
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_attempts INTEGER NOT NULL DEFAULT 0")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_locked_until TEXT")
+        cur.close()
+        conn.close()
+        return
+
     db = sqlite3.connect(DB_PATH)
     db.executescript(
         """
@@ -52,6 +154,8 @@ def init_db():
             nickname TEXT,
             photo TEXT,
             pin TEXT,
+            pin_attempts INTEGER NOT NULL DEFAULT 0,
+            pin_locked_until TEXT,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
@@ -76,11 +180,16 @@ def init_db():
         );
         """
     )
-    # Migração segura: bancos criados antes da coluna "pin" existir.
-    try:
-        db.execute("ALTER TABLE students ADD COLUMN pin TEXT")
-    except sqlite3.OperationalError:
-        pass  # coluna já existe
+    # Migração segura: bancos criados antes destas colunas existirem.
+    for stmt in (
+        "ALTER TABLE students ADD COLUMN pin TEXT",
+        "ALTER TABLE students ADD COLUMN pin_attempts INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE students ADD COLUMN pin_locked_until TEXT",
+    ):
+        try:
+            db.execute(stmt)
+        except sqlite3.OperationalError:
+            pass  # coluna já existe
     db.commit()
     db.close()
 
@@ -90,6 +199,34 @@ def init_db():
 # --------------------------------------------------------------------------
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
+
+
+def save_student_photo(file_storage, name):
+    """Recebe o arquivo de foto enviado, redimensiona e comprime antes de
+    salvar (sempre como .jpg), para não pesar o armazenamento. Retorna o
+    nome do arquivo salvo, ou None se não havia foto ou o arquivo é inválido."""
+    if not file_storage or not file_storage.filename:
+        return None
+    if not allowed_file(file_storage.filename):
+        return None
+
+    try:
+        img = Image.open(file_storage.stream)
+        img = img.convert("RGB")
+    except UnidentifiedImageError:
+        return None
+
+    img.thumbnail((MAX_PHOTO_DIMENSION, MAX_PHOTO_DIMENSION), Image.LANCZOS)
+
+    safe_base = secure_filename(name).lower() or "aluno"
+    filename = f"{safe_base}-{int(datetime.now().timestamp())}.jpg"
+    img.save(
+        os.path.join(app.config["UPLOAD_FOLDER"], filename),
+        "JPEG",
+        quality=PHOTO_JPEG_QUALITY,
+        optimize=True,
+    )
+    return filename
 
 
 def generate_pin():
@@ -112,6 +249,42 @@ def mark_student_verified(student_id):
     session["verified_students"] = verified
 
 
+def pin_lock_remaining_minutes(student):
+    """Minutos restantes de bloqueio por tentativas erradas, ou 0 se livre."""
+    locked_until = student["pin_locked_until"]
+    if not locked_until:
+        return 0
+    until = datetime.fromisoformat(locked_until)
+    remaining = (until - datetime.now()).total_seconds()
+    if remaining <= 0:
+        return 0
+    return max(1, int(remaining // 60) + 1)
+
+
+def register_failed_pin(student_id, current_attempts):
+    db = get_db()
+    attempts = (current_attempts or 0) + 1
+    if attempts >= MAX_PIN_ATTEMPTS:
+        locked_until = (datetime.now() + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
+        db.execute(
+            "UPDATE students SET pin_attempts = 0, pin_locked_until = ? WHERE id = ?",
+            (locked_until, student_id),
+        )
+    else:
+        db.execute("UPDATE students SET pin_attempts = ? WHERE id = ?", (attempts, student_id))
+    db.commit()
+    return attempts
+
+
+def reset_pin_attempts(student_id):
+    db = get_db()
+    db.execute(
+        "UPDATE students SET pin_attempts = 0, pin_locked_until = NULL WHERE id = ?",
+        (student_id,),
+    )
+    db.commit()
+
+
 def today_str():
     return date.today().isoformat()
 
@@ -123,7 +296,7 @@ def display_name(student):
 def get_active_students():
     db = get_db()
     return db.execute(
-        "SELECT * FROM students WHERE active = 1 ORDER BY name COLLATE NOCASE"
+        "SELECT * FROM students WHERE active = 1 ORDER BY LOWER(name)"
     ).fetchall()
 
 
@@ -221,14 +394,31 @@ def aluno_entrar(student_id):
     if is_student_verified(student_id):
         return redirect(url_for("aluno_dashboard", student_id=student_id))
 
+    remaining = pin_lock_remaining_minutes(student)
+    if remaining:
+        flash(
+            f"PIN bloqueado após várias tentativas erradas. Tente de novo em "
+            f"{remaining} minuto(s), ou peça ajuda ao professor.",
+            "error",
+        )
+        return render_template("aluno_entrar.html", student=student, locked=True)
+
     if request.method == "POST":
         pin = request.form.get("pin", "").strip()
         if pin == student["pin"]:
+            reset_pin_attempts(student_id)
             mark_student_verified(student_id)
             return redirect(url_for("aluno_dashboard", student_id=student_id))
-        flash("PIN incorreto. Peça o seu PIN ao professor.", "error")
 
-    return render_template("aluno_entrar.html", student=student)
+        attempts = register_failed_pin(student_id, student["pin_attempts"])
+        left = MAX_PIN_ATTEMPTS - attempts
+        if left > 0:
+            flash(f"PIN incorreto. Mais {left} tentativa(s) antes do bloqueio temporário.", "error")
+        else:
+            flash(f"PIN incorreto várias vezes. Bloqueado por {LOCKOUT_MINUTES} minutos.", "error")
+            return render_template("aluno_entrar.html", student=student, locked=True)
+
+    return render_template("aluno_entrar.html", student=student, locked=False)
 
 
 @app.route("/aluno/<int:student_id>")
@@ -310,6 +500,49 @@ def ranking():
     return render_template("ranking.html", ranking=data, period=period, champion=champion)
 
 
+@app.route("/admin/ranking/exportar")
+def exportar_ranking():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    period = request.args.get("periodo", "month")
+    if period not in ("week", "month", "year"):
+        period = "month"
+    labels = {"week": "Semana", "month": "Mês", "year": "Ano"}
+    data = build_ranking(period)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ranking"
+    ws.append(["Posição", "Aluno", "Treinos confirmados"])
+    header_fill = PatternFill("solid", fgColor="11141B")
+    header_font = Font(bold=True, color="FFFFFF")
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for i, r in enumerate(data, start=1):
+        ws.append([i, r["name"], r["count"]])
+
+    ws.column_dimensions["A"].width = 10
+    ws.column_dimensions["B"].width = 30
+    ws.column_dimensions["C"].width = 22
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    label = labels.get(period, period)
+    filename = f"ranking-elite-hapkido-{label.lower()}-{today_str()}.xlsx"
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
@@ -371,7 +604,9 @@ def admin_dashboard():
         "WHERE c.status != 'pending' ORDER BY c.reviewed_at DESC LIMIT 15"
     ).fetchall()
 
-    total_alunos = db.execute("SELECT COUNT(*) FROM students WHERE active = 1").fetchone()[0]
+    total_alunos = db.execute(
+        "SELECT COUNT(*) AS total FROM students WHERE active = 1"
+    ).fetchone()["total"]
 
     return render_template(
         "admin_dashboard.html", pendentes=pendentes, recentes=recentes, total_alunos=total_alunos
@@ -411,7 +646,9 @@ def admin_alunos():
     if not require_admin():
         return redirect(url_for("admin_login"))
     db = get_db()
-    students = db.execute("SELECT * FROM students ORDER BY active DESC, name COLLATE NOCASE").fetchall()
+    students = db.execute(
+        "SELECT * FROM students ORDER BY active DESC, LOWER(name)"
+    ).fetchall()
     return render_template("admin_alunos.html", students=students)
 
 
@@ -433,13 +670,10 @@ def admin_novo_aluno():
     if not pin:
         pin = generate_pin()
 
-    photo_filename = None
     file = request.files.get("photo")
-    if file and file.filename and allowed_file(file.filename):
-        ext = file.filename.rsplit(".", 1)[1].lower()
-        safe_base = secure_filename(name).lower() or "aluno"
-        photo_filename = f"{safe_base}-{int(datetime.now().timestamp())}.{ext}"
-        file.save(os.path.join(app.config["UPLOAD_FOLDER"], photo_filename))
+    photo_filename = save_student_photo(file, name)
+    if file and file.filename and photo_filename is None:
+        flash("Não consegui processar essa foto (formato inválido). Aluno cadastrado sem foto.", "info")
 
     db = get_db()
     db.execute(
@@ -462,7 +696,10 @@ def admin_novo_pin(student_id):
 
     new_pin = generate_pin()
     db = get_db()
-    db.execute("UPDATE students SET pin = ? WHERE id = ?", (new_pin, student_id))
+    db.execute(
+        "UPDATE students SET pin = ?, pin_attempts = 0, pin_locked_until = NULL WHERE id = ?",
+        (new_pin, student_id),
+    )
     db.commit()
     # Invalida a verificação de sessão anterior para esse aluno, se houver.
     verified = session.get("verified_students", [])
@@ -534,15 +771,16 @@ def fechar_ano():
         )
         db.commit()
         flash(f"Ano {year} fechado! Campeão: {winner['name']} com {winner['count']} treinos.", "success")
-    except sqlite3.IntegrityError:
+    except IntegrityError:
+        db.rollback()
         flash(f"O ano {year} já foi fechado anteriormente.", "error")
 
     return redirect(url_for("admin_campeoes"))
 
 
-# Cria as tabelas do banco assim que o módulo é carregado — precisa rodar
-# tanto com "python app.py" (local) quanto com "gunicorn app:app" (produção),
-# já que o gunicorn nunca executa o bloco "if __name__ == '__main__'" abaixo.
+# Cria/atualiza as tabelas do banco assim que o módulo é carregado — precisa
+# rodar tanto com "python app.py" (local) quanto com "gunicorn app:app"
+# (produção), já que o gunicorn nunca executa o bloco abaixo.
 init_db()
 
 if __name__ == "__main__":

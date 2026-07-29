@@ -10,14 +10,18 @@
     <div class="avatar-placeholder big" style="margin:0 auto 12px;">{{ (student.nickname or student.name)[0] }}</div>
   {% endif %}
   <h1>Oi, {{ student.nickname or student.name }}</h1>
-  <p class="muted">Digite seu PIN de 4 números para continuar.</p>
 
-  <form method="post">
-    <input type="password" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4"
-           placeholder="0000" autofocus required
-           style="text-align:center;letter-spacing:6px;font-size:1.4rem;">
-    <button type="submit" class="btn btn-primary btn-big">Entrar</button>
-  </form>
+  {% if locked %}
+    <p class="muted">Seu acesso está temporariamente bloqueado por muitas tentativas erradas de PIN.</p>
+  {% else %}
+    <p class="muted">Digite seu PIN de 4 números para continuar.</p>
+    <form method="post">
+      <input type="password" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4"
+             placeholder="0000" autofocus required
+             style="text-align:center;letter-spacing:6px;font-size:1.4rem;">
+      <button type="submit" class="btn btn-primary btn-big">Entrar</button>
+    </form>
+  {% endif %}
 
   <p class="muted" style="margin-top:14px;">Esqueceu o PIN? Peça ao professor no treino.</p>
   <a href="{{ url_for('index') }}" class="link-back">← Não sou eu</a>

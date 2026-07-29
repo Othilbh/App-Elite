@@ -42,5 +42,8 @@
 </ol>
 
 <a href="{{ url_for('index') }}" class="link-back">← Voltar</a>
+{% if is_admin %}
+  <a href="{{ url_for('exportar_ranking', periodo=period) }}" class="link-more" style="margin-left:16px;">⬇️ Exportar Excel</a>
+{% endif %}
 
 {% endblock %}
