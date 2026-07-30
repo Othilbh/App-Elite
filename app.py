@@ -750,6 +750,7 @@ def _pdf_styles():
     styles.add(ParagraphStyle(name="ReportMeta", fontName="Helvetica", fontSize=9, textColor=PDF_MUTED, alignment=TA_RIGHT))
     styles.add(ParagraphStyle(name="SectionHeading", fontName="Helvetica-Bold", fontSize=12, textColor=PDF_DARK, spaceBefore=16, spaceAfter=8))
     styles.add(ParagraphStyle(name="StudentLine", fontName="Helvetica", fontSize=10.5, textColor=PDF_DARK, leading=15))
+    styles.add(ParagraphStyle(name="FootNote", fontName="Helvetica-Oblique", fontSize=8, textColor=PDF_MUTED, leading=11, spaceBefore=4))
     return styles
 
 
@@ -831,6 +832,12 @@ def build_student_pdf(student, historico, periodo_label):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     elements.append(resumo)
+    elements.append(Paragraph(
+        "* \"Situação atual\" reflete a mensalidade mais recente do aluno em qualquer mês (a situação real dele agora). "
+        "Os valores e a tabela abaixo mostram só o período selecionado no filtro, então os dois podem não bater — "
+        "por exemplo, se a mensalidade em aberto for de um mês fora do período escolhido.",
+        styles["FootNote"],
+    ))
 
     elements.append(Paragraph("Histórico de mensalidades", styles["SectionHeading"]))
     header_row = ["Mês/Ano", "Vencimento", "Valor", "Status", "Pagamento", "Forma"]
