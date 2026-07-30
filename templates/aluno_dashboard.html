@@ -65,4 +65,24 @@
 
 <a href="{{ url_for('index') }}" class="link-back">← Trocar de aluno</a>
 
+<section class="pin-settings" style="margin-top:20px;">
+  <details>
+    <summary style="cursor:pointer;color:var(--muted, #9aa4b2);font-size:0.9rem;">🔒 Alterar meu PIN</summary>
+    <form method="post" action="{{ url_for('alterar_pin', student_id=student.id) }}" style="margin-top:10px;">
+      <label for="novo_pin">Novo PIN (4 números)</label>
+      <input type="password" id="novo_pin" name="novo_pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required
+             style="text-align:center;letter-spacing:6px;">
+
+      <label for="confirmar_pin">Confirme o novo PIN</label>
+      <input type="password" id="confirmar_pin" name="confirmar_pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required
+             style="text-align:center;letter-spacing:6px;">
+
+      <button type="submit" class="btn btn-small btn-primary" style="margin-top:8px;">Salvar novo PIN</button>
+    </form>
+    <p class="muted" style="font-size:0.8rem;margin-top:6px;">
+      Depois de trocar, esse número passa a ser só seu — nem o professor consegue ver, só redefinir se você esquecer.
+    </p>
+  </details>
+</section>
+
 {% endblock %}

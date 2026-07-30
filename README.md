@@ -17,6 +17,7 @@ Cada aluno tem um PIN de 4 números, para que só ele consiga fazer check-in em 
 - O PIN de cada aluno aparece na lista em **Painel → Alunos** — é aí que você pega o número para repassar a ele.
 - Se o aluno esquecer o PIN, use o botão **"Gerar novo PIN"** na mesma tela.
 - **Bloqueio automático**: depois de 5 tentativas erradas seguidas, o acesso daquele aluno fica bloqueado por 15 minutos (evita que alguém fique tentando adivinhar o PIN de outra pessoa). O professor pode liberar na hora gerando um novo PIN.
+- **O aluno pode trocar seu próprio PIN**: dentro do painel dele, em "🔒 Alterar meu PIN". A partir do momento em que ele troca, o professor deixa de ver o número em texto claro na lista de alunos (aparece "alterado pelo aluno") — vira realmente uma senha pessoal, não uma senha que o professor definiu e conhece. Se o aluno esquecer o PIN próprio, o professor ainda consegue destravar gerando um novo (que volta a ficar visível pra ele, até o aluno trocar de novo).
 - Alunos cadastrados antes dessa funcionalidade existir continuam entrando sem PIN normalmente (não trava ninguém de fora).
 
 ### Fotos comprimidas automaticamente

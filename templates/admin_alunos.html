@@ -38,10 +38,17 @@
         <div class="student-info">
           <strong>{{ s.nickname or s.name }}</strong>
           {% if s.nickname %}<span class="muted">{{ s.name }}</span>{% endif %}
-          {% if s.pin %}<span class="muted">PIN: {{ s.pin }}</span>{% endif %}
+          {% if s.pin %}
+            {% if s.pin_is_custom %}
+              <span class="muted">PIN: alterado pelo aluno (oculto)</span>
+            {% else %}
+              <span class="muted">PIN: {{ s.pin }}</span>
+            {% endif %}
+          {% endif %}
           {% if not s.active %}<span class="badge badge-rejected">Inativo</span>{% endif %}
         </div>
-        <form method="post" action="{{ url_for('admin_novo_pin', student_id=s.id) }}">
+        <form method="post" action="{{ url_for('admin_novo_pin', student_id=s.id) }}"
+              {% if s.pin_is_custom %}onsubmit="return confirm('Esse aluno já escolheu o próprio PIN. Gerar um novo vai substituir a senha dele. Continuar?');"{% endif %}>
           <button type="submit" class="btn btn-small" style="background:#262a33;color:var(--text);">Gerar novo PIN</button>
         </form>
         {% if s.active %}

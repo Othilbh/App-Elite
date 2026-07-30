@@ -115,6 +115,7 @@ def init_db():
                 pin TEXT,
                 pin_attempts INTEGER NOT NULL DEFAULT 0,
                 pin_locked_until TEXT,
+                pin_is_custom INTEGER NOT NULL DEFAULT 0,
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
@@ -141,6 +142,7 @@ def init_db():
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin TEXT")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_attempts INTEGER NOT NULL DEFAULT 0")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_locked_until TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_is_custom INTEGER NOT NULL DEFAULT 0")
         cur.close()
         conn.close()
         return
@@ -156,6 +158,7 @@ def init_db():
             pin TEXT,
             pin_attempts INTEGER NOT NULL DEFAULT 0,
             pin_locked_until TEXT,
+            pin_is_custom INTEGER NOT NULL DEFAULT 0,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
@@ -185,6 +188,7 @@ def init_db():
         "ALTER TABLE students ADD COLUMN pin TEXT",
         "ALTER TABLE students ADD COLUMN pin_attempts INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE students ADD COLUMN pin_locked_until TEXT",
+        "ALTER TABLE students ADD COLUMN pin_is_custom INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             db.execute(stmt)
@@ -484,6 +488,35 @@ def fazer_checkin(student_id):
     return redirect(url_for("aluno_dashboard", student_id=student_id))
 
 
+@app.route("/aluno/<int:student_id>/pin", methods=["POST"])
+def alterar_pin(student_id):
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("index"))
+
+    if not is_student_verified(student_id):
+        return redirect(url_for("aluno_entrar", student_id=student_id))
+
+    novo_pin = request.form.get("novo_pin", "").strip()
+    confirmar_pin = request.form.get("confirmar_pin", "").strip()
+
+    if not (novo_pin.isdigit() and len(novo_pin) == 4):
+        flash("O novo PIN precisa ter exatamente 4 números.", "error")
+    elif novo_pin != confirmar_pin:
+        flash("Os dois PINs digitados não são iguais. Tente de novo.", "error")
+    else:
+        db = get_db()
+        db.execute(
+            "UPDATE students SET pin = ?, pin_is_custom = 1, pin_attempts = 0, pin_locked_until = NULL WHERE id = ?",
+            (novo_pin, student_id),
+        )
+        db.commit()
+        flash("PIN atualizado! A partir de agora só você sabe esse número — nem o professor consegue ver.", "success")
+
+    return redirect(url_for("aluno_dashboard", student_id=student_id))
+
+
 @app.route("/ranking")
 def ranking():
     period = request.args.get("periodo", "month")
@@ -697,7 +730,7 @@ def admin_novo_pin(student_id):
     new_pin = generate_pin()
     db = get_db()
     db.execute(
-        "UPDATE students SET pin = ?, pin_attempts = 0, pin_locked_until = NULL WHERE id = ?",
+        "UPDATE students SET pin = ?, pin_is_custom = 0, pin_attempts = 0, pin_locked_until = NULL WHERE id = ?",
         (new_pin, student_id),
     )
     db.commit()
