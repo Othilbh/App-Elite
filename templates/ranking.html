@@ -31,7 +31,7 @@
       {% if r.photo %}
         <img class="rank-avatar" src="{{ url_for('uploaded_file', filename=r.photo) }}" alt="{{ r.name }}">
       {% else %}
-        <span class="avatar-placeholder small">{{ r.name[0] }}</span>
+        <span class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[r.id % (AVATAR_COLORS|length)] }};">{{ r.name[0] }}</span>
       {% endif %}
       <span class="rank-name">{{ r.name }}</span>
       <span class="rank-count">{{ r.count }} treino{{ 's' if r.count != 1 }}</span>

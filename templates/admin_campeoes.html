@@ -37,6 +37,8 @@
           <span class="trophy">🏆</span>
           {% if c.photo %}
             <img src="{{ url_for('uploaded_file', filename=c.photo) }}" alt="{{ c.name }}">
+          {% else %}
+            <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[c.student_id % (AVATAR_COLORS|length)] }};">{{ (c.nickname or c.name)[0] }}</div>
           {% endif %}
           <div>
             <strong>{{ c.year }}</strong> — {{ c.nickname or c.name }}

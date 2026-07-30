@@ -6,12 +6,28 @@
   {% if student.photo %}
     <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.nickname or student.name }}">
   {% else %}
-    <div class="avatar-placeholder big">{{ (student.nickname or student.name)[0] }}</div>
+    <div class="avatar-placeholder big" style="background:{{ AVATAR_COLORS[student.id % (AVATAR_COLORS|length)] }};">{{ (student.nickname or student.name)[0] }}</div>
   {% endif %}
   <div>
     <h1>{{ student.nickname or student.name }}</h1>
     {% if student.nickname %}<p class="muted">{{ student.name }}</p>{% endif %}
   </div>
+</section>
+
+<section class="belt-block">
+  <div class="belt-row">
+    <span class="belt-swatch" style="background:{{ belt.color }};"></span>
+    <span class="belt-name">{{ belt.name }}</span>
+    <span class="muted belt-total">{{ total }} treino{{ 's' if total != 1 }} no total</span>
+  </div>
+  <div class="belt-track">
+    <div class="belt-fill" style="width:{{ belt.pct }}%; background:{{ belt.color }};"></div>
+  </div>
+  {% if belt.next_name %}
+    <p class="belt-next">Faltam {{ belt.remaining }} treino{{ 's' if belt.remaining != 1 }} para a {{ belt.next_name }}</p>
+  {% else %}
+    <p class="belt-next">Faixa máxima alcançada! 🥋</p>
+  {% endif %}
 </section>
 
 <section class="stats-row">

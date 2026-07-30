@@ -4,10 +4,16 @@ App para os alunos registrarem presença nos treinos, com ranking semanal/mensal
 
 ## Como funciona
 
-- **Aluno**: entra no site, toca na própria foto, digita seu **PIN de 4 números** e clica em "Registrar treino de hoje". O check-in fica pendente.
+- **Aluno**: na home, digita seu nome (ou apelido) e o PIN de 4 números, e clica em "Entrar" — como um login normal, sem precisar tocar em fotos. Dentro do painel dele, toca em "Registrar treino de hoje". O check-in fica pendente.
 - **Professor**: entra em "Sou o professor" (senha padrão `treino123`), vê os check-ins pendentes e confirma ou rejeita cada um. Só check-ins confirmados contam no ranking.
 - **Ranking**: página pública com abas Semana / Mês / Ano, mostrando todos os alunos ordenados por treinos confirmados. O professor logado vê um link para **exportar o ranking em Excel (.xlsx)**.
 - **Prêmio anual**: no painel do professor, em "Campeões", o botão "Fechar ano" registra o aluno com mais treinos confirmados no ano como campeão, criando um histórico (Hall da Fama) para os próximos anos.
+
+### Visual: faixas e pódio
+
+- Cada aluno tem uma **faixa** (branca → amarela → verde → azul → vermelha → preta) que sobe conforme o total de treinos confirmados ao longo do tempo, com barra de progresso até a próxima — visível no painel do próprio aluno.
+- O "Top 3 do ano" na home aparece em formato de **pódio** (1º mais alto e destacado com coroa, 2º e 3º nas laterais), em vez de três cartões iguais.
+- Alunos sem foto cadastrada ganham um avatar colorido (cor fixa por aluno), para facilitar reconhecer o cartão de cada um nas listas.
 
 ### PIN individual do aluno (com bloqueio de segurança)
 

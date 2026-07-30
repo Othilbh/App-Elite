@@ -16,7 +16,7 @@
           {% if p.photo %}
             <img src="{{ url_for('uploaded_file', filename=p.photo) }}" alt="{{ p.name }}">
           {% else %}
-            <div class="avatar-placeholder small">{{ (p.nickname or p.name)[0] }}</div>
+            <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[p.student_id % (AVATAR_COLORS|length)] }};">{{ (p.nickname or p.name)[0] }}</div>
           {% endif %}
           <div class="pending-info">
             <strong>{{ p.nickname or p.name }}</strong>

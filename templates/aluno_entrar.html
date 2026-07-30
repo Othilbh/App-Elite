@@ -7,7 +7,7 @@
     <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.name }}"
          style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin-bottom:12px;">
   {% else %}
-    <div class="avatar-placeholder big" style="margin:0 auto 12px;">{{ (student.nickname or student.name)[0] }}</div>
+    <div class="avatar-placeholder big" style="margin:0 auto 12px;background:{{ AVATAR_COLORS[student.id % (AVATAR_COLORS|length)] }};">{{ (student.nickname or student.name)[0] }}</div>
   {% endif %}
   <h1>Oi, {{ student.nickname or student.name }}</h1>
 

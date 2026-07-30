@@ -44,6 +44,53 @@ LOCKOUT_MINUTES = 15
 MAX_PHOTO_DIMENSION = 720
 PHOTO_JPEG_QUALITY = 82
 
+# Paleta usada para colorir o avatar de quem ainda não tem foto (cor fixa
+# por aluno, calculada a partir do id, para reconhecer o cartão dele rápido).
+AVATAR_COLORS = [
+    "#3a7bc8", "#c0453f", "#3f9463", "#d4af37",
+    "#8b5fbf", "#c97a3d", "#4a8fa8", "#a3475f",
+]
+
+# Faixas (Hapkido) usadas como indicador de progresso: sobe conforme o
+# total de treinos confirmados ao longo da vida do aluno no app.
+BELTS = [
+    {"min": 0, "name": "Faixa Branca", "color": "#f2f2ee"},
+    {"min": 10, "name": "Faixa Amarela", "color": "#e7c548"},
+    {"min": 25, "name": "Faixa Verde", "color": "#3f9463"},
+    {"min": 50, "name": "Faixa Azul", "color": "#3a7bc8"},
+    {"min": 80, "name": "Faixa Vermelha", "color": "#c0453f"},
+    {"min": 120, "name": "Faixa Preta", "color": "#1b1b1b"},
+]
+
+
+def belt_info(total_checkins):
+    """Retorna dados da faixa atual do aluno e progresso até a próxima."""
+    current = BELTS[0]
+    idx = 0
+    for i, b in enumerate(BELTS):
+        if total_checkins >= b["min"]:
+            current = b
+            idx = i
+
+    if idx == len(BELTS) - 1:
+        span = max(1, total_checkins - current["min"] or 1)
+        progressed = span
+        next_name, remaining = None, 0
+    else:
+        nxt = BELTS[idx + 1]
+        span = nxt["min"] - current["min"]
+        progressed = total_checkins - current["min"]
+        next_name, remaining = nxt["name"], nxt["min"] - total_checkins
+
+    pct = 100 if idx == len(BELTS) - 1 else max(0, min(100, round(progressed / span * 100)))
+    return {
+        "name": current["name"],
+        "color": current["color"],
+        "pct": pct,
+        "next_name": next_name,
+        "remaining": remaining,
+    }
+
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "troque-esta-chave-em-producao")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -310,7 +357,7 @@ def get_student(student_id):
 
 
 def counts_for_student(student_id):
-    """Retorna (semana, mes, ano) de check-ins APROVADOS para um aluno."""
+    """Retorna (semana, mes, ano, total_vitalicio) de check-ins APROVADOS."""
     db = get_db()
     rows = db.execute(
         "SELECT workout_date FROM checkins WHERE student_id = ? AND status = 'approved'",
@@ -328,7 +375,7 @@ def counts_for_student(student_id):
             month += 1
         if d.year == today.year:
             year += 1
-    return week, month, year
+    return week, month, year, len(rows)
 
 
 def build_ranking(period):
@@ -375,7 +422,11 @@ def is_admin():
 
 @app.context_processor
 def inject_globals():
-    return {"is_admin": is_admin(), "current_year": date.today().year}
+    return {
+        "is_admin": is_admin(),
+        "current_year": date.today().year,
+        "AVATAR_COLORS": AVATAR_COLORS,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -386,6 +437,18 @@ def index():
     students = get_active_students()
     ranking_year = build_ranking("year")[:3]
     return render_template("index.html", students=students, top3=ranking_year)
+
+
+def attempt_pin(student, pin):
+    """Assume que já checamos que a conta não está bloqueada.
+    Retorna (sucesso: bool, tentativas_restantes: int|None)."""
+    if pin == student["pin"]:
+        reset_pin_attempts(student["id"])
+        mark_student_verified(student["id"])
+        return True, None
+    attempts = register_failed_pin(student["id"], student["pin_attempts"])
+    left = MAX_PIN_ATTEMPTS - attempts
+    return False, left
 
 
 @app.route("/aluno/<int:student_id>/entrar", methods=["GET", "POST"])
@@ -409,13 +472,9 @@ def aluno_entrar(student_id):
 
     if request.method == "POST":
         pin = request.form.get("pin", "").strip()
-        if pin == student["pin"]:
-            reset_pin_attempts(student_id)
-            mark_student_verified(student_id)
+        ok, left = attempt_pin(student, pin)
+        if ok:
             return redirect(url_for("aluno_dashboard", student_id=student_id))
-
-        attempts = register_failed_pin(student_id, student["pin_attempts"])
-        left = MAX_PIN_ATTEMPTS - attempts
         if left > 0:
             flash(f"PIN incorreto. Mais {left} tentativa(s) antes do bloqueio temporário.", "error")
         else:
@@ -423,6 +482,52 @@ def aluno_entrar(student_id):
             return render_template("aluno_entrar.html", student=student, locked=True)
 
     return render_template("aluno_entrar.html", student=student, locked=False)
+
+
+@app.route("/entrar", methods=["POST"])
+def entrar_por_nome():
+    """Login direto pela home: nome (ou apelido) + PIN, sem precisar tocar
+    numa foto — usado pelo formulário de entrada no topo da página inicial."""
+    nome_digitado = request.form.get("nome", "").strip()
+    pin = request.form.get("pin", "").strip()
+
+    if not nome_digitado:
+        flash("Digite seu nome para entrar.", "error")
+        return redirect(url_for("index"))
+
+    db = get_db()
+    student = db.execute(
+        "SELECT * FROM students WHERE active = 1 "
+        "AND (LOWER(nickname) = LOWER(?) OR LOWER(name) = LOWER(?)) LIMIT 1",
+        (nome_digitado, nome_digitado),
+    ).fetchone()
+
+    if not student:
+        flash("Não encontramos esse nome. Confira a grafia ou peça ajuda ao professor.", "error")
+        return redirect(url_for("index"))
+
+    if not student["pin"]:
+        # Alunos antigos sem PIN cadastrado continuam entrando direto.
+        mark_student_verified(student["id"])
+        return redirect(url_for("aluno_dashboard", student_id=student["id"]))
+
+    remaining = pin_lock_remaining_minutes(student)
+    if remaining:
+        flash(
+            f"PIN bloqueado após várias tentativas erradas. Tente de novo em "
+            f"{remaining} minuto(s), ou peça ajuda ao professor.",
+            "error",
+        )
+        return redirect(url_for("index"))
+
+    ok, left = attempt_pin(student, pin)
+    if ok:
+        return redirect(url_for("aluno_dashboard", student_id=student["id"]))
+    if left > 0:
+        flash(f"PIN incorreto. Mais {left} tentativa(s) antes do bloqueio temporário.", "error")
+    else:
+        flash(f"PIN incorreto várias vezes. Bloqueado por {LOCKOUT_MINUTES} minutos.", "error")
+    return redirect(url_for("index"))
 
 
 @app.route("/aluno/<int:student_id>")
@@ -435,7 +540,8 @@ def aluno_dashboard(student_id):
     if not is_student_verified(student_id):
         return redirect(url_for("aluno_entrar", student_id=student_id))
 
-    week, month, year = counts_for_student(student_id)
+    week, month, year, total = counts_for_student(student_id)
+    belt = belt_info(total)
 
     db = get_db()
     today_checkin = db.execute(
@@ -454,6 +560,8 @@ def aluno_dashboard(student_id):
         week=week,
         month=month,
         year=year,
+        total=total,
+        belt=belt,
         today_checkin=today_checkin,
         ranking_month=ranking_month[:5],
         my_position=my_position,

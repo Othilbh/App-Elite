@@ -17,7 +17,10 @@
 </head>
 <body>
 <header class="topbar">
-  <a href="{{ url_for('index') }}" class="brand">🥋 Elite Hapkido</a>
+  <a href="{{ url_for('index') }}" class="brand">
+    <img src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="" class="brand-icon">
+    Elite Hapkido
+  </a>
   <nav>
     <a href="{{ url_for('ranking') }}">Ranking</a>
     {% if is_admin %}

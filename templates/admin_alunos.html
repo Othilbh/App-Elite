@@ -33,7 +33,7 @@
         {% if s.photo %}
           <img src="{{ url_for('uploaded_file', filename=s.photo) }}" alt="{{ s.name }}">
         {% else %}
-          <div class="avatar-placeholder small">{{ s.name[0] }}</div>
+          <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[s.id % (AVATAR_COLORS|length)] }};">{{ s.name[0] }}</div>
         {% endif %}
         <div class="student-info">
           <strong>{{ s.nickname or s.name }}</strong>
