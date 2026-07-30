@@ -54,6 +54,8 @@ Gerados com ReportLab (biblioteca Python pura — sem dependência de programas 
 - **Período selecionável** em ambos: mês atual, últimos 3/6/12 meses, todo o histórico, ou um intervalo de datas personalizado.
 - Layout em A4, pensado tanto pra impressão quanto pra abrir e compartilhar direto do celular (o PDF baixa no aparelho, pronto pra mandar por WhatsApp ou e-mail).
 
+**Correção de bug (geração repetida travando):** os formulários de "Gerar PDF" usavam `target="_blank"`, forçando o navegador a abrir uma nova aba a cada clique. Em navegadores mobile isso é o gatilho clássico de bloqueio de pop-up: depois do primeiro PDF, cliques seguintes eram silenciosamente bloqueados, e só fechar o app inteiro resolvia. Removido o `target="_blank"` — agora o download acontece na mesma página, sem abrir abas, e pode ser repetido quantas vezes for preciso. As rotas de geração também ganharam tratamento de erro (mensagem amigável + permite tentar de novo na hora, sem travar em página de erro crua) e os botões têm um estado de "Gerando..." que se autorreseta sozinho, sem depender de nenhuma confirmação do navegador.
+
 ### Ficha completa do aluno
 
 Além do cadastro rápido (nome, apelido, PIN), o professor pode abrir a **"Ficha completa"** de cada aluno (na tela Alunos) para registrar:

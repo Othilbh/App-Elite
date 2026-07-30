@@ -1882,7 +1882,13 @@ def admin_aluno_pdf(student_id):
     ).fetchall()
     historico, periodo_label = filter_mensalidades_by_period(historico_all, periodo, inicio, fim)
 
-    buffer = build_student_pdf(student, historico, periodo_label)
+    try:
+        buffer = build_student_pdf(student, historico, periodo_label)
+    except Exception:
+        app.logger.exception("Falha ao gerar PDF individual (student_id=%s)", student_id)
+        flash("Não consegui gerar o PDF agora. Tente novamente em alguns segundos.", "error")
+        return redirect(url_for("admin_perfil_financeiro", student_id=student_id))
+
     filename = f"relatorio-{secure_filename(student['name'])}-{today_str()}.pdf"
     return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name=filename)
 
@@ -1923,7 +1929,13 @@ def admin_relatorio_geral_pdf():
         total_pendente += pendente
         total_atrasado += atrasado
 
-    buffer = build_general_report_pdf(rows, label, total_pago, total_pendente, total_atrasado)
+    try:
+        buffer = build_general_report_pdf(rows, label, total_pago, total_pendente, total_atrasado)
+    except Exception:
+        app.logger.exception("Falha ao gerar PDF geral da academia")
+        flash("Não consegui gerar o relatório geral agora. Tente novamente em alguns segundos.", "error")
+        return redirect(url_for("admin_mensalidades"))
+
     filename = f"relatorio-geral-elite-hapkido-{today_str()}.pdf"
     return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name=filename)
 

@@ -50,7 +50,7 @@
 
 <section class="form-card">
   <h2>📄 Gerar PDF</h2>
-  <form method="get" action="{{ url_for('admin_aluno_pdf', student_id=student.id) }}" class="fin-filters" target="_blank">
+  <form method="get" action="{{ url_for('admin_aluno_pdf', student_id=student.id) }}" class="fin-filters" id="pdf-form-individual">
     <select name="periodo">
       <option value="mes_atual">Mês atual</option>
       <option value="3m">Últimos 3 meses</option>
@@ -64,6 +64,31 @@
     <button type="submit" class="btn btn-primary btn-small">Gerar PDF</button>
   </form>
 </section>
+
+<script>
+  (function () {
+    var form = document.getElementById('pdf-form-individual');
+    if (!form) return;
+    var btn = form.querySelector('button[type="submit"]');
+    var original = btn.textContent;
+    form.addEventListener('submit', function () {
+      btn.disabled = true;
+      btn.textContent = 'Gerando PDF...';
+      // Rede de segurança: mesmo sem confirmação explícita de download concluído
+      // (o navegador não avisa isso pra downloads), o botão nunca fica travado.
+      setTimeout(function () {
+        btn.disabled = false;
+        btn.textContent = original;
+      }, 2500);
+    });
+    // Se o usuário voltar pra essa página (ex: gesto de voltar do navegador),
+    // garante que o botão nunca fique preso no estado "Gerando...".
+    window.addEventListener('pageshow', function () {
+      btn.disabled = false;
+      btn.textContent = original;
+    });
+  })();
+</script>
 
 <section class="form-card">
   <h2>Dados cadastrais</h2>

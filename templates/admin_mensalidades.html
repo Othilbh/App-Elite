@@ -40,7 +40,7 @@
 
 <section class="form-card">
   <h2>📄 Relatório geral da academia (PDF)</h2>
-  <form method="get" action="{{ url_for('admin_relatorio_geral_pdf') }}" class="fin-filters" target="_blank">
+  <form method="get" action="{{ url_for('admin_relatorio_geral_pdf') }}" class="fin-filters" id="pdf-form-geral">
     <select name="periodo">
       <option value="mes_atual">Mês atual</option>
       <option value="3m">Últimos 3 meses</option>
@@ -54,6 +54,27 @@
     <button type="submit" class="btn btn-primary btn-small">Gerar PDF geral</button>
   </form>
 </section>
+
+<script>
+  (function () {
+    var form = document.getElementById('pdf-form-geral');
+    if (!form) return;
+    var btn = form.querySelector('button[type="submit"]');
+    var original = btn.textContent;
+    form.addEventListener('submit', function () {
+      btn.disabled = true;
+      btn.textContent = 'Gerando PDF...';
+      setTimeout(function () {
+        btn.disabled = false;
+        btn.textContent = original;
+      }, 2500);
+    });
+    window.addEventListener('pageshow', function () {
+      btn.disabled = false;
+      btn.textContent = original;
+    });
+  })();
+</script>
 
 <section class="fin-charts">
   <div class="fin-chart-box">
