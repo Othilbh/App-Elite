@@ -40,7 +40,7 @@ Nova área **"Mensalidades"** no menu do professor, com gestão completa de paga
 - **Ações por mensalidade**: registrar pagamento (com forma de pagamento), marcar como isenta, editar (valor, vencimento, status, data/forma de pagamento, observações) ou excluir.
 - **Filtros**: por nome do aluno, modalidade, status, mês, ano e forma de pagamento.
 - **Perfil financeiro do aluno** (`💰 Financeiro` na lista de Alunos): dados cadastrais, histórico completo de mensalidades, estatísticas de treino (check-ins na semana/mês/ano, total de treinos, posição no ranking do ano, última presença) e a situação financeira atual, tudo na mesma tela.
-- **Indicador visual na lista de Alunos**: 🟢 em dia / 🟡 vence hoje / 🔴 em atraso, baseado na mensalidade mais recente de cada aluno.
+- **Indicador visual na lista de Alunos**: 🟢 em dia / 🟡 vence hoje / 🔴 em atraso, baseado na mensalidade mais recente de cada aluno. (Corrigido: uma mensalidade pendente com vencimento no futuro aparece como 🟢 em dia — antes, qualquer pendente aparecia incorretamente como 🟡 vence hoje, mesmo vencendo só no mês seguinte.)
 - Os dados financeiros (valor da mensalidade, dia de vencimento, modalidade, status de matrícula, observações) ficam na "Ficha completa" de cada aluno, junto dos outros dados cadastrais.
 
 Esse módulo é totalmente separado do sistema de faixa por frequência (o indicador de progresso do check-in) — um é sobre dinheiro, o outro é sobre engajamento nos treinos.

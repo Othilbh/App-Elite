@@ -658,11 +658,13 @@ def billing_indicator(student_id):
         return None
     if row["status"] == "atrasado":
         return "red"
-    if row["status"] == "pendente" and row["due_date"] == today_str():
-        return "yellow"
+    if row["status"] == "pendente":
+        # Só é "vence hoje" se o vencimento for hoje mesmo. Pendente com
+        # vencimento no futuro está tudo bem (em dia) — ainda não chegou a hora.
+        return "yellow" if row["due_date"] == today_str() else "green"
     if row["status"] in ("pago", "isento"):
         return "green"
-    return "yellow" if row["status"] == "pendente" else None
+    return None
 
 
 SITUACAO_LABELS = {
