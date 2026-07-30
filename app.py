@@ -1825,6 +1825,59 @@ def admin_excluir_mensalidade(mensalidade_id):
     return redirect(request.referrer or url_for("admin_mensalidades"))
 
 
+@app.route("/admin/alunos/<int:student_id>/mensalidades/nova", methods=["POST"])
+def admin_nova_mensalidade(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    ref_month_raw = request.form.get("ref_month", "").strip()
+    ref_year_raw = request.form.get("ref_year", "").strip()
+    valor_raw = request.form.get("valor", "").strip()
+    due_date = request.form.get("due_date", "").strip()
+    status = request.form.get("status", "pendente").strip()
+    payment_date = request.form.get("payment_date", "").strip() or None
+    payment_method = request.form.get("payment_method", "").strip() or None
+    notes = request.form.get("notes", "").strip() or None
+
+    try:
+        ref_month = int(ref_month_raw)
+        ref_year = int(ref_year_raw)
+        if not (1 <= ref_month <= 12):
+            raise ValueError
+    except ValueError:
+        flash("Mês/ano inválidos.", "error")
+        return redirect(url_for("admin_perfil_financeiro", student_id=student_id))
+
+    try:
+        valor = float(valor_raw.replace(",", "."))
+    except ValueError:
+        flash("Valor inválido.", "error")
+        return redirect(url_for("admin_perfil_financeiro", student_id=student_id))
+
+    if not due_date:
+        due_date = date(ref_year, ref_month, min(student["due_day"] or 5, days_in_month(ref_month, ref_year))).isoformat()
+
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO mensalidades (student_id, ref_month, ref_year, valor, due_date, status, "
+            "payment_date, payment_method, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (student_id, ref_month, ref_year, valor, due_date, status, payment_date, payment_method, notes, datetime.now().isoformat()),
+        )
+        db.commit()
+        flash(f"Mensalidade de {month_name_pt(ref_month, ref_year)} lançada no histórico.", "success")
+    except IntegrityError:
+        db.rollback()
+        flash(f"Já existe uma mensalidade de {month_name_pt(ref_month, ref_year)} para esse aluno. Edite a existente em vez de criar outra.", "error")
+
+    return redirect(url_for("admin_perfil_financeiro", student_id=student_id))
+
+
 @app.route("/admin/alunos/<int:student_id>/financeiro")
 def admin_perfil_financeiro(student_id):
     if not require_admin():

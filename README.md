@@ -36,6 +36,7 @@ Nova área **"Mensalidades"** no menu do professor, com gestão completa de paga
 
 - **Dashboard** com indicadores (alunos ativos, receita prevista/recebida do mês, valor pendente, inadimplentes, % de inadimplência) e três gráficos (receita por mês, formas de pagamento, evolução da inadimplência) — feitos com Chart.js, carregado via CDN, sem precisar instalar nada no servidor.
 - **Geração automática**: um botão gera a mensalidade do mês seguinte para todos os alunos com `billing_status = ativo` e valor de mensalidade configurado. Não duplica quem já tem a mensalidade daquele mês gerada.
+- **Lançar histórico manualmente**: no perfil financeiro do aluno, um formulário permite lançar a mensalidade de qualquer mês/ano — útil pra registrar pagamentos de antes de começar a usar o app, ou preencher um mês que passou batido. Não deixa lançar duas vezes o mesmo mês/ano do mesmo aluno (mostra aviso pra editar a existente em vez de duplicar).
 - **Atraso automático**: toda vez que a tela de Mensalidades é aberta, mensalidades pendentes com vencimento já passado viram "Atrasado" sozinhas — não precisa de um robô/cron rodando em segundo plano, porque essa checagem roda no próprio carregamento da página.
 - **Ações por mensalidade**: registrar pagamento (com forma de pagamento), marcar como isenta, editar (valor, vencimento, status, data/forma de pagamento, observações) ou excluir.
 - **Filtros**: por nome do aluno, modalidade, status, mês, ano e forma de pagamento.

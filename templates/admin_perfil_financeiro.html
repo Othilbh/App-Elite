@@ -49,6 +49,56 @@
 </section>
 
 <section class="form-card">
+  <h2>🗓️ Lançar mensalidade no histórico</h2>
+  <p class="muted" style="font-size:0.8rem;margin-top:-4px;">Use pra registrar meses anteriores (de antes do app) ou qualquer mês que não tenha sido gerado automaticamente.</p>
+  <form method="post" action="{{ url_for('admin_nova_mensalidade', student_id=student.id) }}">
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;">
+        <label for="ref_month">Mês</label>
+        <select id="ref_month" name="ref_month" required>
+          {% for i in range(1, 13) %}
+            <option value="{{ i }}">{{ MESES_PT[i] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;">
+        <label for="ref_year">Ano</label>
+        <input type="number" id="ref_year" name="ref_year" value="{{ current_year }}" required>
+      </div>
+    </div>
+
+    <label for="valor">Valor (R$)</label>
+    <input type="text" id="valor" name="valor" value="{{ student.monthly_fee or '' }}" inputmode="decimal" required>
+
+    <label for="due_date">Data de vencimento (opcional — se deixar em branco, usa o dia de vencimento cadastrado)</label>
+    <input type="date" id="due_date" name="due_date">
+
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      {% for value, label in MENSALIDADE_STATUSES %}
+        <option value="{{ value }}" {% if value == 'pago' %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="payment_date">Data do pagamento (se já pago)</label>
+    <input type="date" id="payment_date" name="payment_date">
+
+    <label for="payment_method">Forma de pagamento</label>
+    <select id="payment_method" name="payment_method">
+      <option value="">—</option>
+      {% for value, label in PAYMENT_METHODS %}
+        <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="notes">Observações</label>
+    <textarea id="notes" name="notes" rows="2" placeholder="ex: pago em dinheiro antes de usar o app"></textarea>
+
+    <button type="submit" class="btn btn-primary btn-small">Lançar mensalidade</button>
+  </form>
+</section>
+
+<section class="form-card">
   <h2>📄 Gerar PDF</h2>
   <form method="get" action="{{ url_for('admin_aluno_pdf', student_id=student.id) }}" class="fin-filters" id="pdf-form-individual">
     <select name="periodo">
