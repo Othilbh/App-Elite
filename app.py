@@ -169,6 +169,12 @@ def init_db():
                 guardian_name TEXT,
                 guardian_phone TEXT,
                 address TEXT,
+                email TEXT,
+                modality TEXT,
+                monthly_fee REAL,
+                due_day INTEGER,
+                billing_status TEXT NOT NULL DEFAULT 'ativo',
+                notes TEXT,
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
@@ -189,6 +195,21 @@ def init_db():
                 total_checkins INTEGER NOT NULL,
                 closed_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS mensalidades (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students (id),
+                ref_month INTEGER NOT NULL,
+                ref_year INTEGER NOT NULL,
+                valor REAL NOT NULL,
+                due_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pendente',
+                payment_date TEXT,
+                payment_method TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE (student_id, ref_month, ref_year)
+            );
             """
         )
         # Migração seguindo para bancos criados antes destas colunas existirem.
@@ -202,6 +223,12 @@ def init_db():
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_name TEXT")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_phone TEXT")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS address TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS email TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS modality TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS monthly_fee REAL")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS due_day INTEGER")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS billing_status TEXT NOT NULL DEFAULT 'ativo'")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS notes TEXT")
         cur.close()
         conn.close()
         return
@@ -224,6 +251,12 @@ def init_db():
             guardian_name TEXT,
             guardian_phone TEXT,
             address TEXT,
+            email TEXT,
+            modality TEXT,
+            monthly_fee REAL,
+            due_day INTEGER,
+            billing_status TEXT NOT NULL DEFAULT 'ativo',
+            notes TEXT,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
@@ -246,6 +279,22 @@ def init_db():
             closed_at TEXT NOT NULL,
             FOREIGN KEY (student_id) REFERENCES students (id)
         );
+
+        CREATE TABLE IF NOT EXISTS mensalidades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            ref_month INTEGER NOT NULL,
+            ref_year INTEGER NOT NULL,
+            valor REAL NOT NULL,
+            due_date TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pendente',
+            payment_date TEXT,
+            payment_method TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (student_id) REFERENCES students (id),
+            UNIQUE (student_id, ref_month, ref_year)
+        );
         """
     )
     # Migração segura: bancos criados antes destas colunas existirem.
@@ -260,6 +309,12 @@ def init_db():
         "ALTER TABLE students ADD COLUMN guardian_name TEXT",
         "ALTER TABLE students ADD COLUMN guardian_phone TEXT",
         "ALTER TABLE students ADD COLUMN address TEXT",
+        "ALTER TABLE students ADD COLUMN email TEXT",
+        "ALTER TABLE students ADD COLUMN modality TEXT",
+        "ALTER TABLE students ADD COLUMN monthly_fee REAL",
+        "ALTER TABLE students ADD COLUMN due_day INTEGER",
+        "ALTER TABLE students ADD COLUMN billing_status TEXT NOT NULL DEFAULT 'ativo'",
+        "ALTER TABLE students ADD COLUMN notes TEXT",
     ):
         try:
             db.execute(stmt)
@@ -380,6 +435,229 @@ def display_name(student):
     return student["nickname"] or student["name"]
 
 
+# --------------------------------------------------------------------------
+# Financeiro / Mensalidades
+# --------------------------------------------------------------------------
+PAYMENT_METHODS = [
+    ("pix", "Pix"),
+    ("dinheiro", "Dinheiro"),
+    ("cartao_credito", "Cartão de Crédito"),
+    ("cartao_debito", "Cartão de Débito"),
+    ("transferencia", "Transferência"),
+    ("outro", "Outro"),
+]
+PAYMENT_METHOD_LABELS = dict(PAYMENT_METHODS)
+
+MENSALIDADE_STATUSES = [
+    ("pendente", "Pendente"),
+    ("pago", "Pago"),
+    ("atrasado", "Atrasado"),
+    ("isento", "Isento"),
+]
+MENSALIDADE_STATUS_LABELS = dict(MENSALIDADE_STATUSES)
+
+BILLING_STATUSES = [
+    ("ativo", "Ativo"),
+    ("inativo", "Inativo"),
+    ("trancado", "Trancado"),
+]
+
+MESES_PT = [
+    "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+]
+
+
+def month_name_pt(month, year=None):
+    label = MESES_PT[month] if 1 <= month <= 12 else str(month)
+    return f"{label}/{year}" if year else label
+
+
+def format_money(value):
+    if value is None:
+        value = 0
+    text = f"{float(value):,.2f}"
+    text = text.replace(",", "§").replace(".", ",").replace("§", ".")
+    return f"R$ {text}"
+
+
+def days_in_month(month, year):
+    if month == 12:
+        nxt = date(year + 1, 1, 1)
+    else:
+        nxt = date(year, month + 1, 1)
+    return (nxt - date(year, month, 1)).days
+
+
+def add_months(month, year, delta=1):
+    total = (month - 1) + delta
+    new_year = year + total // 12
+    new_month = total % 12 + 1
+    return new_month, new_year
+
+
+def days_overdue(due_date_str):
+    try:
+        due = date.fromisoformat(due_date_str)
+    except (ValueError, TypeError):
+        return 0
+    delta = (date.today() - due).days
+    return delta if delta > 0 else 0
+
+
+def refresh_overdue_mensalidades():
+    """Mensalidades pendentes cujo vencimento já passou viram 'atrasado'.
+    Chamado no início das rotas do módulo financeiro (sem precisar de cron)."""
+    db = get_db()
+    db.execute(
+        "UPDATE mensalidades SET status = 'atrasado' "
+        "WHERE status = 'pendente' AND due_date < ?",
+        (today_str(),),
+    )
+    db.commit()
+
+
+def generate_next_month_mensalidades():
+    """Gera a mensalidade do mês seguinte (relativo a hoje) para todo aluno
+    com billing_status='ativo' e mensalidade configurada. Não duplica quem
+    já tem mensalidade gerada pra esse mês/ano (UNIQUE student+ref_month+ref_year)."""
+    db = get_db()
+    today = date.today()
+    ref_month, ref_year = add_months(today.month, today.year, 1)
+
+    students = db.execute(
+        "SELECT * FROM students WHERE billing_status = 'ativo' AND monthly_fee IS NOT NULL"
+    ).fetchall()
+
+    created = 0
+    for s in students:
+        exists = db.execute(
+            "SELECT id FROM mensalidades WHERE student_id = ? AND ref_month = ? AND ref_year = ?",
+            (s["id"], ref_month, ref_year),
+        ).fetchone()
+        if exists:
+            continue
+        due_day = s["due_day"] or 5
+        due_day = min(due_day, days_in_month(ref_month, ref_year))
+        due_date = date(ref_year, ref_month, due_day).isoformat()
+        try:
+            db.execute(
+                "INSERT INTO mensalidades (student_id, ref_month, ref_year, valor, due_date, status, created_at) "
+                "VALUES (?, ?, ?, ?, ?, 'pendente', ?)",
+                (s["id"], ref_month, ref_year, s["monthly_fee"], due_date, datetime.now().isoformat()),
+            )
+            created += 1
+        except IntegrityError:
+            db.rollback()
+    db.commit()
+    return created, ref_month, ref_year
+
+
+def financial_dashboard_data():
+    """Indicadores e dados de gráfico pro dashboard de Mensalidades."""
+    db = get_db()
+    today = date.today()
+
+    total_ativos = db.execute(
+        "SELECT COUNT(*) AS total FROM students WHERE billing_status = 'ativo'"
+    ).fetchone()["total"]
+
+    prevista = db.execute(
+        "SELECT COALESCE(SUM(valor), 0) AS total FROM mensalidades WHERE ref_month = ? AND ref_year = ?",
+        (today.month, today.year),
+    ).fetchone()["total"]
+
+    recebida = db.execute(
+        "SELECT COALESCE(SUM(valor), 0) AS total FROM mensalidades "
+        "WHERE ref_month = ? AND ref_year = ? AND status = 'pago'",
+        (today.month, today.year),
+    ).fetchone()["total"]
+
+    pendente = db.execute(
+        "SELECT COALESCE(SUM(valor), 0) AS total FROM mensalidades WHERE status IN ('pendente', 'atrasado')"
+    ).fetchone()["total"]
+
+    inadimplentes = db.execute(
+        "SELECT COUNT(DISTINCT student_id) AS total FROM mensalidades WHERE status = 'atrasado'"
+    ).fetchone()["total"]
+
+    pct_inadimplencia = (inadimplentes / total_ativos * 100) if total_ativos else 0
+
+    # Últimos 6 meses (mais antigo -> mais recente) pros gráficos
+    months_seq = []
+    m, y = add_months(today.month, today.year, -5)
+    for _ in range(6):
+        months_seq.append((m, y))
+        m, y = add_months(m, y, 1)
+
+    receita_labels, receita_prevista_serie, receita_recebida_serie = [], [], []
+    inadimplencia_serie = []
+    for m, y in months_seq:
+        receita_labels.append(month_name_pt(m)[:3] + f"/{str(y)[2:]}")
+        prev = db.execute(
+            "SELECT COALESCE(SUM(valor), 0) AS total FROM mensalidades WHERE ref_month = ? AND ref_year = ?",
+            (m, y),
+        ).fetchone()["total"]
+        rec = db.execute(
+            "SELECT COALESCE(SUM(valor), 0) AS total FROM mensalidades "
+            "WHERE ref_month = ? AND ref_year = ? AND status = 'pago'",
+            (m, y),
+        ).fetchone()["total"]
+        total_mes = db.execute(
+            "SELECT COUNT(*) AS total FROM mensalidades WHERE ref_month = ? AND ref_year = ?",
+            (m, y),
+        ).fetchone()["total"]
+        atrasados_mes = db.execute(
+            "SELECT COUNT(*) AS total FROM mensalidades WHERE ref_month = ? AND ref_year = ? AND status = 'atrasado'",
+            (m, y),
+        ).fetchone()["total"]
+        receita_prevista_serie.append(round(float(prev), 2))
+        receita_recebida_serie.append(round(float(rec), 2))
+        inadimplencia_serie.append(round((atrasados_mes / total_mes * 100), 1) if total_mes else 0)
+
+    formas = db.execute(
+        "SELECT payment_method, COALESCE(SUM(valor), 0) AS total FROM mensalidades "
+        "WHERE status = 'pago' AND payment_method IS NOT NULL "
+        "GROUP BY payment_method"
+    ).fetchall()
+    formas_labels = [PAYMENT_METHOD_LABELS.get(f["payment_method"], f["payment_method"]) for f in formas]
+    formas_valores = [round(float(f["total"]), 2) for f in formas]
+
+    return {
+        "total_ativos": total_ativos,
+        "prevista": round(float(prevista), 2),
+        "recebida": round(float(recebida), 2),
+        "pendente": round(float(pendente), 2),
+        "inadimplentes": inadimplentes,
+        "pct_inadimplencia": round(pct_inadimplencia, 1),
+        "receita_labels": receita_labels,
+        "receita_prevista_serie": receita_prevista_serie,
+        "receita_recebida_serie": receita_recebida_serie,
+        "inadimplencia_serie": inadimplencia_serie,
+        "formas_labels": formas_labels,
+        "formas_valores": formas_valores,
+    }
+
+
+def billing_indicator(student_id):
+    """🟢 em dia / 🟡 vence hoje / 🔴 atrasado / cinza sem mensalidade, pra
+    mostrar na lista de alunos."""
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM mensalidades WHERE student_id = ? ORDER BY ref_year DESC, ref_month DESC LIMIT 1",
+        (student_id,),
+    ).fetchone()
+    if not row:
+        return None
+    if row["status"] == "atrasado":
+        return "red"
+    if row["status"] == "pendente" and row["due_date"] == today_str():
+        return "yellow"
+    if row["status"] in ("pago", "isento"):
+        return "green"
+    return "yellow" if row["status"] == "pendente" else None
+
+
 def get_active_students():
     db = get_db()
     return db.execute(
@@ -462,7 +740,14 @@ def inject_globals():
         "is_admin": is_admin(),
         "current_year": date.today().year,
         "AVATAR_COLORS": AVATAR_COLORS,
+        "PAYMENT_METHODS": PAYMENT_METHODS,
+        "MENSALIDADE_STATUSES": MENSALIDADE_STATUSES,
+        "BILLING_STATUSES": BILLING_STATUSES,
+        "MESES_PT": MESES_PT,
     }
+
+
+app.jinja_env.filters["reais"] = format_money
 
 
 # --------------------------------------------------------------------------
@@ -826,11 +1111,13 @@ def rejeitar_checkin(checkin_id):
 def admin_alunos():
     if not require_admin():
         return redirect(url_for("admin_login"))
+    refresh_overdue_mensalidades()
     db = get_db()
     students = db.execute(
         "SELECT * FROM students ORDER BY active DESC, LOWER(name)"
     ).fetchall()
-    return render_template("admin_alunos.html", students=students)
+    indicadores = {s["id"]: billing_indicator(s["id"]) for s in students}
+    return render_template("admin_alunos.html", students=students, indicadores=indicadores)
 
 
 @app.route("/admin/alunos/<int:student_id>/editar", methods=["GET", "POST"])
@@ -852,6 +1139,31 @@ def admin_editar_aluno(student_id):
         address = request.form.get("address", "").strip()
         active = 1 if request.form.get("active") == "on" else 0
 
+        email = request.form.get("email", "").strip()
+        modality = request.form.get("modality", "").strip()
+        monthly_fee_raw = request.form.get("monthly_fee", "").strip()
+        due_day_raw = request.form.get("due_day", "").strip()
+        billing_status = request.form.get("billing_status", "ativo").strip()
+        notes = request.form.get("notes", "").strip()
+
+        monthly_fee = None
+        if monthly_fee_raw:
+            try:
+                monthly_fee = float(monthly_fee_raw.replace(",", "."))
+            except ValueError:
+                flash("Valor da mensalidade inválido.", "error")
+                return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+        due_day = None
+        if due_day_raw:
+            try:
+                due_day = int(due_day_raw)
+                if not (1 <= due_day <= 28):
+                    raise ValueError
+            except ValueError:
+                flash("Dia de vencimento precisa ser um número entre 1 e 28.", "error")
+                return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
         if birth_date:
             try:
                 date.fromisoformat(birth_date)
@@ -871,7 +1183,9 @@ def admin_editar_aluno(student_id):
 
         db.execute(
             "UPDATE students SET birth_date = ?, real_belt = ?, phone = ?, "
-            "guardian_name = ?, guardian_phone = ?, address = ?, active = ? WHERE id = ?",
+            "guardian_name = ?, guardian_phone = ?, address = ?, active = ?, "
+            "email = ?, modality = ?, monthly_fee = ?, due_day = ?, billing_status = ?, notes = ? "
+            "WHERE id = ?",
             (
                 birth_date or None,
                 real_belt or None,
@@ -880,6 +1194,12 @@ def admin_editar_aluno(student_id):
                 guardian_phone or None,
                 address or None,
                 active,
+                email or None,
+                modality or None,
+                monthly_fee,
+                due_day,
+                billing_status or "ativo",
+                notes or None,
                 student_id,
             ),
         )
@@ -1010,6 +1330,210 @@ def fechar_ano():
         flash(f"O ano {year} já foi fechado anteriormente.", "error")
 
     return redirect(url_for("admin_campeoes"))
+
+
+# --------------------------------------------------------------------------
+# Financeiro / Mensalidades
+# --------------------------------------------------------------------------
+@app.route("/admin/mensalidades")
+def admin_mensalidades():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    refresh_overdue_mensalidades()
+    db = get_db()
+
+    aluno_q = request.args.get("aluno", "").strip()
+    modalidade_q = request.args.get("modalidade", "").strip()
+    status_q = request.args.get("status", "").strip()
+    mes_q = request.args.get("mes", "").strip()
+    ano_q = request.args.get("ano", "").strip()
+    forma_q = request.args.get("forma_pagamento", "").strip()
+
+    today = date.today()
+    if not mes_q and not ano_q:
+        mes_q, ano_q = str(today.month), str(today.year)
+
+    where = ["1=1"]
+    params = []
+    if aluno_q:
+        where.append("(LOWER(s.name) LIKE ? OR LOWER(s.nickname) LIKE ?)")
+        like = f"%{aluno_q.lower()}%"
+        params += [like, like]
+    if modalidade_q:
+        where.append("s.modality = ?")
+        params.append(modalidade_q)
+    if status_q:
+        where.append("m.status = ?")
+        params.append(status_q)
+    if mes_q:
+        where.append("m.ref_month = ?")
+        params.append(int(mes_q))
+    if ano_q:
+        where.append("m.ref_year = ?")
+        params.append(int(ano_q))
+    if forma_q:
+        where.append("m.payment_method = ?")
+        params.append(forma_q)
+
+    query = (
+        "SELECT m.*, s.name, s.nickname, s.photo, s.modality FROM mensalidades m "
+        "JOIN students s ON s.id = m.student_id "
+        "WHERE " + " AND ".join(where) +
+        " ORDER BY m.due_date ASC"
+    )
+    mensalidades = db.execute(query, params).fetchall()
+
+    modalidades = db.execute(
+        "SELECT DISTINCT modality FROM students WHERE modality IS NOT NULL AND modality != '' ORDER BY modality"
+    ).fetchall()
+
+    dashboard = financial_dashboard_data()
+
+    return render_template(
+        "admin_mensalidades.html",
+        mensalidades=mensalidades,
+        dashboard=dashboard,
+        modalidades=[m["modality"] for m in modalidades],
+        filtros={
+            "aluno": aluno_q, "modalidade": modalidade_q, "status": status_q,
+            "mes": mes_q, "ano": ano_q, "forma_pagamento": forma_q,
+        },
+        days_overdue=days_overdue,
+        month_name_pt=month_name_pt,
+    )
+
+
+@app.route("/admin/mensalidades/gerar-proximo-mes", methods=["POST"])
+def admin_gerar_mensalidades():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    created, ref_month, ref_year = generate_next_month_mensalidades()
+    if created:
+        flash(f"{created} mensalidade(s) de {month_name_pt(ref_month, ref_year)} geradas.", "success")
+    else:
+        flash(f"Nenhuma mensalidade nova para {month_name_pt(ref_month, ref_year)} (já geradas ou nenhum aluno ativo com valor definido).", "info")
+    return redirect(url_for("admin_mensalidades"))
+
+
+@app.route("/admin/mensalidades/<int:mensalidade_id>/pagar", methods=["POST"])
+def admin_pagar_mensalidade(mensalidade_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    payment_date = request.form.get("payment_date", "").strip() or today_str()
+    payment_method = request.form.get("payment_method", "").strip() or None
+    db = get_db()
+    db.execute(
+        "UPDATE mensalidades SET status = 'pago', payment_date = ?, payment_method = ? WHERE id = ?",
+        (payment_date, payment_method, mensalidade_id),
+    )
+    db.commit()
+    flash("Pagamento registrado!", "success")
+    return redirect(request.referrer or url_for("admin_mensalidades"))
+
+
+@app.route("/admin/mensalidades/<int:mensalidade_id>/isentar", methods=["POST"])
+def admin_isentar_mensalidade(mensalidade_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("UPDATE mensalidades SET status = 'isento' WHERE id = ?", (mensalidade_id,))
+    db.commit()
+    flash("Mensalidade marcada como isenta.", "success")
+    return redirect(request.referrer or url_for("admin_mensalidades"))
+
+
+@app.route("/admin/mensalidades/<int:mensalidade_id>/editar", methods=["GET", "POST"])
+def admin_editar_mensalidade(mensalidade_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    mensalidade = db.execute(
+        "SELECT m.*, s.name, s.nickname FROM mensalidades m JOIN students s ON s.id = m.student_id WHERE m.id = ?",
+        (mensalidade_id,),
+    ).fetchone()
+    if not mensalidade:
+        flash("Mensalidade não encontrada.", "error")
+        return redirect(url_for("admin_mensalidades"))
+
+    if request.method == "POST":
+        valor = request.form.get("valor", "").strip()
+        due_date = request.form.get("due_date", "").strip()
+        status = request.form.get("status", "").strip()
+        payment_date = request.form.get("payment_date", "").strip() or None
+        payment_method = request.form.get("payment_method", "").strip() or None
+        notes = request.form.get("notes", "").strip() or None
+
+        try:
+            valor = float(valor.replace(",", "."))
+        except ValueError:
+            flash("Valor inválido.", "error")
+            return redirect(url_for("admin_editar_mensalidade", mensalidade_id=mensalidade_id))
+
+        db.execute(
+            "UPDATE mensalidades SET valor = ?, due_date = ?, status = ?, payment_date = ?, "
+            "payment_method = ?, notes = ? WHERE id = ?",
+            (valor, due_date, status, payment_date, payment_method, notes, mensalidade_id),
+        )
+        db.commit()
+        flash("Mensalidade atualizada!", "success")
+        return redirect(url_for("admin_mensalidades"))
+
+    return render_template("admin_editar_mensalidade.html", m=mensalidade, month_name_pt=month_name_pt)
+
+
+@app.route("/admin/mensalidades/<int:mensalidade_id>/excluir", methods=["POST"])
+def admin_excluir_mensalidade(mensalidade_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("DELETE FROM mensalidades WHERE id = ?", (mensalidade_id,))
+    db.commit()
+    flash("Registro excluído.", "info")
+    return redirect(request.referrer or url_for("admin_mensalidades"))
+
+
+@app.route("/admin/alunos/<int:student_id>/financeiro")
+def admin_perfil_financeiro(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    refresh_overdue_mensalidades()
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    db = get_db()
+    historico = db.execute(
+        "SELECT * FROM mensalidades WHERE student_id = ? ORDER BY ref_year DESC, ref_month DESC",
+        (student_id,),
+    ).fetchall()
+
+    week, month, year, total_checkins = counts_for_student(student_id)
+    ranking_year = build_ranking("year")
+    my_position = next((i + 1 for i, r in enumerate(ranking_year) if r["id"] == student_id), None)
+
+    ultima_presenca = db.execute(
+        "SELECT workout_date FROM checkins WHERE student_id = ? AND status = 'approved' "
+        "ORDER BY workout_date DESC LIMIT 1",
+        (student_id,),
+    ).fetchone()
+
+    situacao = billing_indicator(student_id)
+
+    return render_template(
+        "admin_perfil_financeiro.html",
+        student=student,
+        historico=historico,
+        age=calculate_age(student["birth_date"]),
+        week=week, month=month, year=year, total_checkins=total_checkins,
+        my_position=my_position,
+        ultima_presenca=ultima_presenca["workout_date"] if ultima_presenca else None,
+        situacao=situacao,
+        days_overdue=days_overdue,
+        month_name_pt=month_name_pt,
+    )
 
 
 # Cria/atualiza as tabelas do banco assim que o módulo é carregado — precisa

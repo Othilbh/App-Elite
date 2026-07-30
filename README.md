@@ -30,6 +30,21 @@ Cada aluno tem um PIN de 4 números, para que só ele consiga fazer check-in em 
 
 Toda foto enviada no cadastro é redimensionada (no máximo 720px no lado maior) e salva como JPEG otimizado — reduz bastante o espaço ocupado, sem perda visível de qualidade num avatar de app.
 
+### Módulo financeiro: Mensalidades
+
+Nova área **"Mensalidades"** no menu do professor, com gestão completa de pagamentos:
+
+- **Dashboard** com indicadores (alunos ativos, receita prevista/recebida do mês, valor pendente, inadimplentes, % de inadimplência) e três gráficos (receita por mês, formas de pagamento, evolução da inadimplência) — feitos com Chart.js, carregado via CDN, sem precisar instalar nada no servidor.
+- **Geração automática**: um botão gera a mensalidade do mês seguinte para todos os alunos com `billing_status = ativo` e valor de mensalidade configurado. Não duplica quem já tem a mensalidade daquele mês gerada.
+- **Atraso automático**: toda vez que a tela de Mensalidades é aberta, mensalidades pendentes com vencimento já passado viram "Atrasado" sozinhas — não precisa de um robô/cron rodando em segundo plano, porque essa checagem roda no próprio carregamento da página.
+- **Ações por mensalidade**: registrar pagamento (com forma de pagamento), marcar como isenta, editar (valor, vencimento, status, data/forma de pagamento, observações) ou excluir.
+- **Filtros**: por nome do aluno, modalidade, status, mês, ano e forma de pagamento.
+- **Perfil financeiro do aluno** (`💰 Financeiro` na lista de Alunos): dados cadastrais, histórico completo de mensalidades, estatísticas de treino (check-ins na semana/mês/ano, total de treinos, posição no ranking do ano, última presença) e a situação financeira atual, tudo na mesma tela.
+- **Indicador visual na lista de Alunos**: 🟢 em dia / 🟡 vence hoje / 🔴 em atraso, baseado na mensalidade mais recente de cada aluno.
+- Os dados financeiros (valor da mensalidade, dia de vencimento, modalidade, status de matrícula, observações) ficam na "Ficha completa" de cada aluno, junto dos outros dados cadastrais.
+
+Esse módulo é totalmente separado do sistema de faixa por frequência (o indicador de progresso do check-in) — um é sobre dinheiro, o outro é sobre engajamento nos treinos.
+
 ### Ficha completa do aluno
 
 Além do cadastro rápido (nome, apelido, PIN), o professor pode abrir a **"Ficha completa"** de cada aluno (na tela Alunos) para registrar:

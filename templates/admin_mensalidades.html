@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Mensalidades{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Mensalidades</h1>
+  <p>Gestão financeira da academia</p>
+</section>
+
+<section class="fin-cards">
+  <div class="fin-card">
+    <span class="fin-label">Alunos ativos</span>
+    <span class="fin-value">{{ dashboard.total_ativos }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Receita prevista (mês)</span>
+    <span class="fin-value">{{ dashboard.prevista|reais }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Receita recebida (mês)</span>
+    <span class="fin-value" style="color:var(--success);">{{ dashboard.recebida|reais }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Valor pendente</span>
+    <span class="fin-value" style="color:#ffc107;">{{ dashboard.pendente|reais }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Inadimplentes</span>
+    <span class="fin-value" style="color:var(--danger);">{{ dashboard.inadimplentes }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">% Inadimplência</span>
+    <span class="fin-value" style="color:var(--danger);">{{ dashboard.pct_inadimplencia }}%</span>
+  </div>
+</section>
+
+<form method="post" action="{{ url_for('admin_gerar_mensalidades') }}" style="margin-bottom:20px;">
+  <button type="submit" class="btn btn-primary btn-big">📅 Gerar mensalidades do próximo mês (alunos ativos)</button>
+</form>
+
+<section class="fin-charts">
+  <div class="fin-chart-box">
+    <h2>Receita por mês (prevista × recebida)</h2>
+    <canvas id="chartReceita"></canvas>
+  </div>
+  <div class="fin-chart-box">
+    <h2>Pagamentos por forma de pagamento</h2>
+    <canvas id="chartFormas"></canvas>
+  </div>
+  <div class="fin-chart-box">
+    <h2>Evolução da inadimplência (%)</h2>
+    <canvas id="chartInadimplencia"></canvas>
+  </div>
+</section>
+
+<section class="form-card">
+  <h2>Filtros</h2>
+  <form method="get" action="{{ url_for('admin_mensalidades') }}" class="fin-filters">
+    <input type="text" name="aluno" placeholder="Nome do aluno" value="{{ filtros.aluno }}">
+
+    <select name="modalidade">
+      <option value="">Modalidade (todas)</option>
+      {% for m in modalidades %}
+        <option value="{{ m }}" {% if filtros.modalidade == m %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="status">
+      <option value="">Status (todos)</option>
+      {% for value, label in MENSALIDADE_STATUSES %}
+        <option value="{{ value }}" {% if filtros.status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="mes">
+      <option value="">Mês (todos)</option>
+      {% for i in range(1, 13) %}
+        <option value="{{ i }}" {% if filtros.mes == i|string %}selected{% endif %}>{{ MESES_PT[i] }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="ano">
+      <option value="">Ano (todos)</option>
+      {% for y in range(current_year - 1, current_year + 2) %}
+        <option value="{{ y }}" {% if filtros.ano == y|string %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="forma_pagamento">
+      <option value="">Forma de pagamento (todas)</option>
+      {% for value, label in PAYMENT_METHODS %}
+        <option value="{{ value }}" {% if filtros.forma_pagamento == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <button type="submit" class="btn btn-primary btn-small">Filtrar</button>
+    <a href="{{ url_for('admin_mensalidades') }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;text-align:center;">Limpar</a>
+  </form>
+</section>
+
+<section>
+  <h2>Mensalidades ({{ mensalidades|length }})</h2>
+  <div class="fin-list">
+    {% for m in mensalidades %}
+      <div class="fin-row">
+        <div class="fin-row-top">
+          {% if m.photo %}
+            <img src="{{ url_for('uploaded_file', filename=m.photo) }}" alt="{{ m.name }}" class="avatar-placeholder small">
+          {% else %}
+            <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[m.student_id % (AVATAR_COLORS|length)] }};">{{ (m.nickname or m.name)[0] }}</div>
+          {% endif %}
+          <div class="fin-row-info">
+            <strong>{{ m.nickname or m.name }}</strong>
+            <span class="muted">{{ month_name_pt(m.ref_month) }}/{{ m.ref_year }}{% if m.modality %} · {{ m.modality }}{% endif %}</span>
+          </div>
+          <span class="fin-valor">{{ m.valor|reais }}</span>
+        </div>
+        <div class="fin-row-bottom">
+          {% if m.status == 'pago' %}
+            <span class="badge badge-approved">Pago{% if m.payment_method %} · {{ PAYMENT_METHODS|selectattr('0','equalto', m.payment_method)|map(attribute='1')|first }}{% endif %}</span>
+          {% elif m.status == 'atrasado' %}
+            <span class="badge badge-rejected">Atrasado há {{ days_overdue(m.due_date) }} dia{{ 's' if days_overdue(m.due_date) != 1 }}</span>
+          {% elif m.status == 'isento' %}
+            <span class="badge badge-approved">Isento</span>
+          {% else %}
+            <span class="badge badge-pending">Pendente · vence {{ m.due_date }}</span>
+          {% endif %}
+
+          <div class="fin-actions">
+            {% if m.status in ('pendente', 'atrasado') %}
+              <form method="post" action="{{ url_for('admin_pagar_mensalidade', mensalidade_id=m.id) }}" class="fin-pay-form">
+                <select name="payment_method" required>
+                  <option value="">Forma...</option>
+                  {% for value, label in PAYMENT_METHODS %}
+                    <option value="{{ value }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-approve btn-small">Registrar pagamento</button>
+              </form>
+              <form method="post" action="{{ url_for('admin_isentar_mensalidade', mensalidade_id=m.id) }}">
+                <button type="submit" class="btn btn-small" style="background:#262a33;color:var(--text);">Isentar</button>
+              </form>
+            {% endif %}
+            <a href="{{ url_for('admin_editar_mensalidade', mensalidade_id=m.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Editar</a>
+            <form method="post" action="{{ url_for('admin_excluir_mensalidade', mensalidade_id=m.id) }}"
+                  onsubmit="return confirm('Excluir esse registro de mensalidade? Não dá pra desfazer.');">
+              <button type="submit" class="btn btn-reject btn-small">Excluir</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <p class="muted" style="text-align:center;padding:20px 0;">Nenhuma mensalidade encontrada com esses filtros.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  const goldColor = '#d4af37';
+  const blueColor = '#3a7bc8';
+  const greenColor = '#3f9463';
+  const redColor = '#ff5c5c';
+  const gridColor = 'rgba(255,255,255,0.08)';
+  const fontColor = '#9a9ea7';
+  Chart.defaults.color = fontColor;
+  Chart.defaults.borderColor = gridColor;
+
+  new Chart(document.getElementById('chartReceita'), {
+    type: 'bar',
+    data: {
+      labels: {{ dashboard.receita_labels|tojson }},
+      datasets: [
+        { label: 'Prevista', data: {{ dashboard.receita_prevista_serie|tojson }}, backgroundColor: goldColor + '55', borderColor: goldColor, borderWidth: 1 },
+        { label: 'Recebida', data: {{ dashboard.receita_recebida_serie|tojson }}, backgroundColor: greenColor + 'aa', borderColor: greenColor, borderWidth: 1 },
+      ]
+    },
+    options: { responsive: true, scales: { y: { beginAtZero: true } } }
+  });
+
+  new Chart(document.getElementById('chartFormas'), {
+    type: 'doughnut',
+    data: {
+      labels: {{ dashboard.formas_labels|tojson }},
+      datasets: [{ data: {{ dashboard.formas_valores|tojson }}, backgroundColor: [goldColor, blueColor, greenColor, '#8b5fbf', '#c97a3d', '#a3475f'] }]
+    },
+    options: { responsive: true }
+  });
+
+  new Chart(document.getElementById('chartInadimplencia'), {
+    type: 'line',
+    data: {
+      labels: {{ dashboard.receita_labels|tojson }},
+      datasets: [{ label: '% inadimplência', data: {{ dashboard.inadimplencia_serie|tojson }}, borderColor: redColor, backgroundColor: redColor + '33', fill: true, tension: 0.3 }]
+    },
+    options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } } }
+  });
+</script>
+
+{% endblock %}

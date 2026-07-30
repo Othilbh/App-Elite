@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Editar mensalidade{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Editar mensalidade</h1>
+  <p>{{ m.nickname or m.name }} · {{ month_name_pt(m.ref_month) }}/{{ m.ref_year }}</p>
+</section>
+
+<section class="form-card">
+  <form method="post" action="{{ url_for('admin_editar_mensalidade', mensalidade_id=m.id) }}">
+    <label for="valor">Valor (R$)</label>
+    <input type="text" id="valor" name="valor" value="{{ m.valor }}" inputmode="decimal" required>
+
+    <label for="due_date">Data de vencimento</label>
+    <input type="date" id="due_date" name="due_date" value="{{ m.due_date }}" required>
+
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      {% for value, label in MENSALIDADE_STATUSES %}
+        <option value="{{ value }}" {% if m.status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="payment_date">Data do pagamento</label>
+    <input type="date" id="payment_date" name="payment_date" value="{{ m.payment_date or '' }}">
+
+    <label for="payment_method">Forma de pagamento</label>
+    <select id="payment_method" name="payment_method">
+      <option value="">—</option>
+      {% for value, label in PAYMENT_METHODS %}
+        <option value="{{ value }}" {% if m.payment_method == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="notes">Observações</label>
+    <textarea id="notes" name="notes" rows="3">{{ m.notes or '' }}</textarea>
+
+    <button type="submit" class="btn btn-primary">Salvar</button>
+  </form>
+</section>
+
+<a href="{{ url_for('admin_mensalidades') }}" class="link-back">← Voltar para Mensalidades</a>
+
+{% endblock %}
