@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Ficha de {{ student.nickname or student.name }}{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Ficha do aluno</h1>
+  <p>{{ student.nickname or student.name }}{% if age %} · {{ age }} anos{% endif %}</p>
+</section>
+
+<section class="form-card">
+  <form method="post" action="{{ url_for('admin_editar_aluno', student_id=student.id) }}">
+    <label for="birth_date">Data de nascimento</label>
+    <input type="date" id="birth_date" name="birth_date" value="{{ student.birth_date or '' }}">
+
+    <label for="real_belt">Faixa oficial (graduação real no Hapkido)</label>
+    <input type="text" id="real_belt" name="real_belt" value="{{ student.real_belt or '' }}"
+           placeholder="ex: Faixa Azul, 2º grau">
+
+    <label for="phone">Telefone do aluno</label>
+    <input type="tel" id="phone" name="phone" value="{{ student.phone or '' }}" placeholder="(31) 9xxxx-xxxx">
+
+    <label for="guardian_name">Nome do responsável (se menor de idade)</label>
+    <input type="text" id="guardian_name" name="guardian_name" value="{{ student.guardian_name or '' }}">
+
+    <label for="guardian_phone">Telefone do responsável</label>
+    <input type="tel" id="guardian_phone" name="guardian_phone" value="{{ student.guardian_phone or '' }}"
+           placeholder="(31) 9xxxx-xxxx">
+
+    <label for="address">Endereço</label>
+    <input type="text" id="address" name="address" value="{{ student.address or '' }}"
+           placeholder="Rua, número, bairro, cidade">
+
+    <button type="submit" class="btn btn-primary">Salvar ficha</button>
+  </form>
+</section>
+
+<a href="{{ url_for('admin_alunos') }}" class="link-back">← Voltar para Alunos</a>
+
+{% endblock %}

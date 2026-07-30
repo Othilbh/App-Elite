@@ -30,6 +30,18 @@ Cada aluno tem um PIN de 4 números, para que só ele consiga fazer check-in em 
 
 Toda foto enviada no cadastro é redimensionada (no máximo 720px no lado maior) e salva como JPEG otimizado — reduz bastante o espaço ocupado, sem perda visível de qualidade num avatar de app.
 
+### Ficha completa do aluno
+
+Além do cadastro rápido (nome, apelido, foto, PIN), o professor pode abrir a **"Ficha completa"** de cada aluno (na tela Alunos) para registrar:
+
+- Data de nascimento (a idade é calculada automaticamente)
+- **Faixa oficial** — a graduação real do aluno no Hapkido, definida pelo professor. É diferente do indicador de "faixa" que aparece no painel do aluno, que é apenas um contador de frequência/engajamento, não uma graduação de verdade. As duas aparecem separadas e identificadas para não gerar confusão.
+- Telefone do aluno
+- Nome e telefone do responsável (para os menores de idade)
+- Endereço
+
+Esses dados são visíveis só na área do professor — não aparecem em nenhuma tela pública nem no painel do próprio aluno (exceto a faixa oficial, que é mostrada a ele).
+
 ## Banco de dados: SQLite (local) ou Postgres (produção)
 
 O app detecta sozinho qual banco usar:

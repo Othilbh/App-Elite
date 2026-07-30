@@ -163,6 +163,12 @@ def init_db():
                 pin_attempts INTEGER NOT NULL DEFAULT 0,
                 pin_locked_until TEXT,
                 pin_is_custom INTEGER NOT NULL DEFAULT 0,
+                birth_date TEXT,
+                real_belt TEXT,
+                phone TEXT,
+                guardian_name TEXT,
+                guardian_phone TEXT,
+                address TEXT,
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
@@ -190,6 +196,12 @@ def init_db():
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_attempts INTEGER NOT NULL DEFAULT 0")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_locked_until TEXT")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_is_custom INTEGER NOT NULL DEFAULT 0")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS birth_date TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS real_belt TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS phone TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_name TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_phone TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS address TEXT")
         cur.close()
         conn.close()
         return
@@ -206,6 +218,12 @@ def init_db():
             pin_attempts INTEGER NOT NULL DEFAULT 0,
             pin_locked_until TEXT,
             pin_is_custom INTEGER NOT NULL DEFAULT 0,
+            birth_date TEXT,
+            real_belt TEXT,
+            phone TEXT,
+            guardian_name TEXT,
+            guardian_phone TEXT,
+            address TEXT,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
@@ -236,6 +254,12 @@ def init_db():
         "ALTER TABLE students ADD COLUMN pin_attempts INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE students ADD COLUMN pin_locked_until TEXT",
         "ALTER TABLE students ADD COLUMN pin_is_custom INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE students ADD COLUMN birth_date TEXT",
+        "ALTER TABLE students ADD COLUMN real_belt TEXT",
+        "ALTER TABLE students ADD COLUMN phone TEXT",
+        "ALTER TABLE students ADD COLUMN guardian_name TEXT",
+        "ALTER TABLE students ADD COLUMN guardian_phone TEXT",
+        "ALTER TABLE students ADD COLUMN address TEXT",
     ):
         try:
             db.execute(stmt)
@@ -338,6 +362,18 @@ def reset_pin_attempts(student_id):
 
 def today_str():
     return date.today().isoformat()
+
+
+def calculate_age(birth_date_str):
+    if not birth_date_str:
+        return None
+    try:
+        b = date.fromisoformat(birth_date_str)
+    except ValueError:
+        return None
+    today = date.today()
+    age = today.year - b.year - ((today.month, today.day) < (b.month, b.day))
+    return age
 
 
 def display_name(student):
@@ -795,6 +831,53 @@ def admin_alunos():
         "SELECT * FROM students ORDER BY active DESC, LOWER(name)"
     ).fetchall()
     return render_template("admin_alunos.html", students=students)
+
+
+@app.route("/admin/alunos/<int:student_id>/editar", methods=["GET", "POST"])
+def admin_editar_aluno(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    if request.method == "POST":
+        birth_date = request.form.get("birth_date", "").strip()
+        real_belt = request.form.get("real_belt", "").strip()
+        phone = request.form.get("phone", "").strip()
+        guardian_name = request.form.get("guardian_name", "").strip()
+        guardian_phone = request.form.get("guardian_phone", "").strip()
+        address = request.form.get("address", "").strip()
+
+        if birth_date:
+            try:
+                date.fromisoformat(birth_date)
+            except ValueError:
+                flash("Data de nascimento inválida.", "error")
+                return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+        db = get_db()
+        db.execute(
+            "UPDATE students SET birth_date = ?, real_belt = ?, phone = ?, "
+            "guardian_name = ?, guardian_phone = ?, address = ? WHERE id = ?",
+            (
+                birth_date or None,
+                real_belt or None,
+                phone or None,
+                guardian_name or None,
+                guardian_phone or None,
+                address or None,
+                student_id,
+            ),
+        )
+        db.commit()
+        flash("Ficha do aluno atualizada!", "success")
+        return redirect(url_for("admin_alunos"))
+
+    age = calculate_age(student["birth_date"])
+    return render_template("admin_editar_aluno.html", student=student, age=age)
 
 
 @app.route("/admin/alunos/novo", methods=["POST"])

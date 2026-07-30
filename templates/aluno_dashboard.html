@@ -11,10 +11,12 @@
   <div>
     <h1>{{ student.nickname or student.name }}</h1>
     {% if student.nickname %}<p class="muted">{{ student.name }}</p>{% endif %}
+    {% if student.real_belt %}<p class="muted">🥋 Faixa oficial: {{ student.real_belt }}</p>{% endif %}
   </div>
 </section>
 
 <section class="belt-block">
+  <p class="muted" style="margin:0 0 8px;font-size:0.75rem;">PROGRESSO POR FREQUÊNCIA (não é a faixa oficial)</p>
   <div class="belt-row">
     <span class="belt-swatch" style="background:{{ belt.color }};"></span>
     <span class="belt-name">{{ belt.name }}</span>
