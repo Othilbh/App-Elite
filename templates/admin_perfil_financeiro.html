@@ -49,6 +49,23 @@
 </section>
 
 <section class="form-card">
+  <h2>📄 Gerar PDF</h2>
+  <form method="get" action="{{ url_for('admin_aluno_pdf', student_id=student.id) }}" class="fin-filters" target="_blank">
+    <select name="periodo">
+      <option value="mes_atual">Mês atual</option>
+      <option value="3m">Últimos 3 meses</option>
+      <option value="6m">Últimos 6 meses</option>
+      <option value="12m">Últimos 12 meses</option>
+      <option value="todo">Todo o histórico</option>
+      <option value="custom">Intervalo personalizado</option>
+    </select>
+    <input type="date" name="inicio" placeholder="Início (se personalizado)">
+    <input type="date" name="fim" placeholder="Fim (se personalizado)">
+    <button type="submit" class="btn btn-primary btn-small">Gerar PDF</button>
+  </form>
+</section>
+
+<section class="form-card">
   <h2>Dados cadastrais</h2>
   <p><strong>Telefone:</strong> {{ student.phone or '—' }}</p>
   <p><strong>E-mail:</strong> {{ student.email or '—' }}</p>

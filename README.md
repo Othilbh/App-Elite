@@ -45,6 +45,15 @@ Nova área **"Mensalidades"** no menu do professor, com gestão completa de paga
 
 Esse módulo é totalmente separado do sistema de faixa por frequência (o indicador de progresso do check-in) — um é sobre dinheiro, o outro é sobre engajamento nos treinos.
 
+### Exportação de relatórios em PDF
+
+Gerados com ReportLab (biblioteca Python pura — sem dependência de programas externos no servidor, diferente de outras ferramentas de HTML→PDF que exigem bibliotecas de sistema).
+
+- **Relatório individual** — botão "📄 Gerar PDF" no perfil financeiro do aluno. Contém cabeçalho com logo/data, resumo financeiro (mensalidade, vencimento, situação, total pago/em aberto no período, mensalidades em atraso), histórico completo com linhas coloridas por status (verde = pago, amarelo = pendente, vermelho = atrasado, cinza = isento) e os totais do período no rodapé da tabela.
+- **Relatório geral da academia** — na tela de Mensalidades, gera um PDF com todos os alunos, situação de cada um, valores pago/pendente/atrasado e os totais consolidados da academia.
+- **Período selecionável** em ambos: mês atual, últimos 3/6/12 meses, todo o histórico, ou um intervalo de datas personalizado.
+- Layout em A4, pensado tanto pra impressão quanto pra abrir e compartilhar direto do celular (o PDF baixa no aparelho, pronto pra mandar por WhatsApp ou e-mail).
+
 ### Ficha completa do aluno
 
 Além do cadastro rápido (nome, apelido, PIN), o professor pode abrir a **"Ficha completa"** de cada aluno (na tela Alunos) para registrar:

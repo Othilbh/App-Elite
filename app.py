@@ -10,6 +10,13 @@ from flask import (Flask, flash, g, redirect, render_template, request,
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from PIL import Image, UnidentifiedImageError
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import (Image as RLImage, Paragraph, SimpleDocTemplate,
+                                 Spacer, Table, TableStyle)
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -656,6 +663,322 @@ def billing_indicator(student_id):
     if row["status"] in ("pago", "isento"):
         return "green"
     return "yellow" if row["status"] == "pendente" else None
+
+
+SITUACAO_LABELS = {
+    "green": "Em dia",
+    "yellow": "Pendente",
+    "red": "Atrasado",
+    None: "Sem mensalidade cadastrada",
+}
+
+PERIODO_LABELS = {
+    "mes_atual": "Mês atual",
+    "3m": "Últimos 3 meses",
+    "6m": "Últimos 6 meses",
+    "12m": "Últimos 12 meses",
+    "todo": "Todo o histórico",
+}
+
+
+def period_months_set(periodo, inicio="", fim=""):
+    """Retorna (set_de_(mes,ano) ou None-pra-'sem filtro', label)."""
+    today = date.today()
+    if periodo == "mes_atual":
+        return {(today.month, today.year)}, PERIODO_LABELS["mes_atual"]
+    if periodo in ("3m", "6m", "12m"):
+        n = {"3m": 3, "6m": 6, "12m": 12}[periodo]
+        months = set()
+        m, y = today.month, today.year
+        for _ in range(n):
+            months.add((m, y))
+            m, y = add_months(m, y, -1)
+        return months, PERIODO_LABELS[periodo]
+    if periodo == "custom" and inicio and fim:
+        try:
+            ini_d = date.fromisoformat(inicio)
+            fim_d = date.fromisoformat(fim)
+        except ValueError:
+            return None, PERIODO_LABELS["todo"]
+        months = set()
+        m, y = ini_d.month, ini_d.year
+        guard = 0
+        while (y, m) <= (fim_d.year, fim_d.month) and guard < 600:
+            months.add((m, y))
+            m, y = add_months(m, y, 1)
+            guard += 1
+        return months, f"{inicio} a {fim}"
+    return None, PERIODO_LABELS["todo"]
+
+
+def filter_mensalidades_by_period(rows, periodo, inicio="", fim=""):
+    months, label = period_months_set(periodo, inicio, fim)
+    if months is None:
+        return list(rows), label
+    return [r for r in rows if (r["ref_month"], r["ref_year"]) in months], label
+
+
+# --- Geração de PDFs (ReportLab) ------------------------------------------
+LOGO_PATH = os.path.join(BASE_DIR, "static", "icons", "icon-192.png")
+
+PDF_DARK = rl_colors.HexColor("#14171f")
+PDF_GOLD = rl_colors.HexColor("#a97f1f")
+PDF_MUTED = rl_colors.HexColor("#6b7280")
+PDF_LINE = rl_colors.HexColor("#e2e2e2")
+PDF_GREEN_BG = rl_colors.HexColor("#e3f3e9")
+PDF_GREEN_TEXT = rl_colors.HexColor("#2f6b49")
+PDF_YELLOW_BG = rl_colors.HexColor("#fff6d9")
+PDF_YELLOW_TEXT = rl_colors.HexColor("#8a6d00")
+PDF_RED_BG = rl_colors.HexColor("#fce4e4")
+PDF_RED_TEXT = rl_colors.HexColor("#a23b3b")
+PDF_GRAY_BG = rl_colors.HexColor("#eeeeee")
+
+
+def _pdf_status_colors(status):
+    return {
+        "pago": (PDF_GREEN_BG, PDF_GREEN_TEXT),
+        "pendente": (PDF_YELLOW_BG, PDF_YELLOW_TEXT),
+        "atrasado": (PDF_RED_BG, PDF_RED_TEXT),
+        "isento": (PDF_GRAY_BG, PDF_MUTED),
+    }.get(status, (rl_colors.white, PDF_DARK))
+
+
+def _pdf_styles():
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="AcademyTitle", fontName="Helvetica-Bold", fontSize=17, textColor=PDF_DARK))
+    styles.add(ParagraphStyle(name="ReportKicker", fontName="Helvetica-Bold", fontSize=9, textColor=PDF_GOLD, spaceAfter=2))
+    styles.add(ParagraphStyle(name="ReportMeta", fontName="Helvetica", fontSize=9, textColor=PDF_MUTED, alignment=TA_RIGHT))
+    styles.add(ParagraphStyle(name="SectionHeading", fontName="Helvetica-Bold", fontSize=12, textColor=PDF_DARK, spaceBefore=16, spaceAfter=8))
+    styles.add(ParagraphStyle(name="StudentLine", fontName="Helvetica", fontSize=10.5, textColor=PDF_DARK, leading=15))
+    return styles
+
+
+def _pdf_footer(canvas, doc):
+    canvas.saveState()
+    canvas.setStrokeColor(PDF_LINE)
+    canvas.line(20 * mm, 15 * mm, A4[0] - 20 * mm, 15 * mm)
+    canvas.setFont("Helvetica", 8)
+    canvas.setFillColor(PDF_MUTED)
+    canvas.drawString(20 * mm, 10 * mm, "Elite Hapkido — gerado automaticamente pelo app de check-in e mensalidades")
+    canvas.drawRightString(A4[0] - 20 * mm, 10 * mm, f"Página {doc.page}")
+    canvas.restoreState()
+
+
+def _pdf_header_table(styles, subtitle, meta_lines):
+    logo_cell = RLImage(LOGO_PATH, width=15 * mm, height=15 * mm) if os.path.exists(LOGO_PATH) else ""
+    title_cell = [
+        Paragraph("ELITE HAPKIDO", styles["AcademyTitle"]),
+        Paragraph(subtitle, styles["ReportKicker"]),
+    ]
+    meta_cell = [Paragraph(line, styles["ReportMeta"]) for line in meta_lines]
+    header = Table(
+        [[logo_cell, title_cell, meta_cell]],
+        colWidths=[20 * mm, 95 * mm, 55 * mm],
+    )
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (2, 0), (2, 0), "RIGHT"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    return header
+
+
+def build_student_pdf(student, historico, periodo_label):
+    buffer = BytesIO()
+    styles = _pdf_styles()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        topMargin=18 * mm, bottomMargin=20 * mm, leftMargin=20 * mm, rightMargin=20 * mm,
+    )
+    elements = []
+
+    hoje = date.today().strftime("%d/%m/%Y")
+    situacao = SITUACAO_LABELS.get(billing_indicator(student["id"]))
+    elements.append(_pdf_header_table(
+        styles, "Relatório Financeiro Individual",
+        [f"Emitido em {hoje}", f"Período: {periodo_label}"],
+    ))
+
+    nome = display_name(student)
+    elements.append(Paragraph(
+        f"<b>Aluno:</b> {student['name']}" + (f" ({student['nickname']})" if student['nickname'] else ""),
+        styles["StudentLine"],
+    ))
+    elements.append(Paragraph(f"<b>Modalidade:</b> {student['modality'] or '—'}", styles["StudentLine"]))
+    elements.append(Paragraph(f"<b>Faixa oficial:</b> {student['real_belt'] or '—'}", styles["StudentLine"]))
+
+    pago = sum(m["valor"] for m in historico if m["status"] == "pago")
+    aberto = sum(m["valor"] for m in historico if m["status"] in ("pendente", "atrasado"))
+    qtd_atraso = sum(1 for m in historico if m["status"] == "atrasado")
+
+    elements.append(Paragraph("Resumo financeiro", styles["SectionHeading"]))
+    resumo_data = [
+        ["Valor da mensalidade", format_money(student["monthly_fee"]) if student["monthly_fee"] else "—"],
+        ["Dia de vencimento", str(student["due_day"]) if student["due_day"] else "—"],
+        ["Situação atual", situacao],
+        [f"Total pago no período ({periodo_label})", format_money(pago)],
+        ["Total em aberto (pendente + atrasado)", format_money(aberto)],
+        ["Mensalidades em atraso", str(qtd_atraso)],
+    ]
+    resumo = Table(resumo_data, colWidths=[95 * mm, 75 * mm])
+    resumo.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+        ("TEXTCOLOR", (0, 0), (0, -1), PDF_MUTED),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.5, PDF_LINE),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(resumo)
+
+    elements.append(Paragraph("Histórico de mensalidades", styles["SectionHeading"]))
+    header_row = ["Mês/Ano", "Vencimento", "Valor", "Status", "Pagamento", "Forma"]
+    table_data = [header_row]
+    row_colors = [None]
+    for m in historico:
+        table_data.append([
+            month_name_pt(m["ref_month"], m["ref_year"]),
+            m["due_date"],
+            format_money(m["valor"]),
+            MENSALIDADE_STATUS_LABELS.get(m["status"], m["status"]),
+            m["payment_date"] or "—",
+            PAYMENT_METHOD_LABELS.get(m["payment_method"], "—"),
+        ])
+        row_colors.append(_pdf_status_colors(m["status"]))
+
+    if len(table_data) == 1:
+        table_data.append(["Nenhuma mensalidade no período selecionado.", "", "", "", "", ""])
+        row_colors.append((rl_colors.white, PDF_MUTED))
+
+    hist_table = Table(table_data, colWidths=[26 * mm, 26 * mm, 24 * mm, 26 * mm, 26 * mm, 26 * mm], repeatRows=1)
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), PDF_DARK),
+        ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("GRID", (0, 0), (-1, -1), 0.4, PDF_LINE),
+    ]
+    for i, rc in enumerate(row_colors):
+        if i == 0 or rc is None:
+            continue
+        bg, txt = rc
+        style_cmds.append(("BACKGROUND", (0, i), (-1, i), bg))
+        style_cmds.append(("TEXTCOLOR", (3, i), (3, i), txt))
+    hist_table.setStyle(TableStyle(style_cmds))
+    elements.append(hist_table)
+
+    elements.append(Spacer(1, 14))
+    elements.append(Paragraph("Totais do período", styles["SectionHeading"]))
+    pendente_only = sum(m["valor"] for m in historico if m["status"] == "pendente")
+    atrasado_only = sum(m["valor"] for m in historico if m["status"] == "atrasado")
+    totais = Table(
+        [["Total pago", "Total pendente", "Total em atraso"],
+         [format_money(pago), format_money(pendente_only), format_money(atrasado_only)]],
+        colWidths=[56.6 * mm, 56.6 * mm, 56.6 * mm],
+    )
+    totais.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("TEXTCOLOR", (0, 0), (-1, 0), PDF_MUTED),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, 1), 13),
+        ("TEXTCOLOR", (0, 1), (0, 1), PDF_GREEN_TEXT),
+        ("TEXTCOLOR", (1, 1), (1, 1), PDF_YELLOW_TEXT),
+        ("TEXTCOLOR", (2, 1), (2, 1), PDF_RED_TEXT),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("BOX", (0, 0), (-1, -1), 0.6, PDF_LINE),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, PDF_LINE),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(totais)
+
+    doc.build(elements, onFirstPage=_pdf_footer, onLaterPages=_pdf_footer)
+    buffer.seek(0)
+    return buffer
+
+
+def build_general_report_pdf(rows, periodo_label, total_pago, total_pendente, total_atrasado):
+    buffer = BytesIO()
+    styles = _pdf_styles()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        topMargin=18 * mm, bottomMargin=20 * mm, leftMargin=20 * mm, rightMargin=20 * mm,
+    )
+    elements = []
+    hoje = date.today().strftime("%d/%m/%Y")
+    elements.append(_pdf_header_table(
+        styles, "Relatório Geral da Academia",
+        [f"Emitido em {hoje}", f"Período: {periodo_label}", f"{len(rows)} aluno(s)"],
+    ))
+
+    header_row = ["Aluno", "Situação", "Pago", "Pendente", "Atrasado"]
+    table_data = [header_row]
+    row_colors = [None]
+    for r in rows:
+        table_data.append([
+            r["name"],
+            SITUACAO_LABELS.get(r["situacao"]),
+            format_money(r["pago"]),
+            format_money(r["pendente"]),
+            format_money(r["atrasado"]),
+        ])
+        situ_color = {"green": PDF_GREEN_BG, "yellow": PDF_YELLOW_BG, "red": PDF_RED_BG}.get(r["situacao"], rl_colors.white)
+        row_colors.append(situ_color)
+
+    if len(table_data) == 1:
+        table_data.append(["Nenhum aluno cadastrado.", "", "", "", ""])
+        row_colors.append(rl_colors.white)
+
+    table = Table(table_data, colWidths=[55 * mm, 32 * mm, 30 * mm, 30 * mm, 30 * mm], repeatRows=1)
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), PDF_DARK),
+        ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("GRID", (0, 0), (-1, -1), 0.4, PDF_LINE),
+    ]
+    for i, bg in enumerate(row_colors):
+        if i == 0 or bg is None:
+            continue
+        style_cmds.append(("BACKGROUND", (1, i), (1, i), bg))
+    table.setStyle(TableStyle(style_cmds))
+    elements.append(table)
+
+    elements.append(Spacer(1, 14))
+    elements.append(Paragraph("Totais consolidados", styles["SectionHeading"]))
+    totais = Table(
+        [["Total pago", "Total pendente", "Total em atraso"],
+         [format_money(total_pago), format_money(total_pendente), format_money(total_atrasado)]],
+        colWidths=[56.6 * mm, 56.6 * mm, 56.6 * mm],
+    )
+    totais.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("TEXTCOLOR", (0, 0), (-1, 0), PDF_MUTED),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, 1), 13),
+        ("TEXTCOLOR", (0, 1), (0, 1), PDF_GREEN_TEXT),
+        ("TEXTCOLOR", (1, 1), (1, 1), PDF_YELLOW_TEXT),
+        ("TEXTCOLOR", (2, 1), (2, 1), PDF_RED_TEXT),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("BOX", (0, 0), (-1, -1), 0.6, PDF_LINE),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, PDF_LINE),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(totais)
+
+    doc.build(elements, onFirstPage=_pdf_footer, onLaterPages=_pdf_footer)
+    buffer.seek(0)
+    return buffer
 
 
 def get_active_students():
@@ -1533,7 +1856,76 @@ def admin_perfil_financeiro(student_id):
         situacao=situacao,
         days_overdue=days_overdue,
         month_name_pt=month_name_pt,
+        PERIODO_LABELS=PERIODO_LABELS,
     )
+
+
+@app.route("/admin/alunos/<int:student_id>/pdf")
+def admin_aluno_pdf(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    refresh_overdue_mensalidades()
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    periodo = request.args.get("periodo", "mes_atual")
+    inicio = request.args.get("inicio", "")
+    fim = request.args.get("fim", "")
+
+    db = get_db()
+    historico_all = db.execute(
+        "SELECT * FROM mensalidades WHERE student_id = ? ORDER BY ref_year, ref_month",
+        (student_id,),
+    ).fetchall()
+    historico, periodo_label = filter_mensalidades_by_period(historico_all, periodo, inicio, fim)
+
+    buffer = build_student_pdf(student, historico, periodo_label)
+    filename = f"relatorio-{secure_filename(student['name'])}-{today_str()}.pdf"
+    return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name=filename)
+
+
+@app.route("/admin/mensalidades/relatorio-geral")
+def admin_relatorio_geral_pdf():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    refresh_overdue_mensalidades()
+    periodo = request.args.get("periodo", "mes_atual")
+    inicio = request.args.get("inicio", "")
+    fim = request.args.get("fim", "")
+
+    db = get_db()
+    students = db.execute("SELECT * FROM students ORDER BY LOWER(name)").fetchall()
+    all_mensalidades = db.execute("SELECT * FROM mensalidades").fetchall()
+
+    by_student = defaultdict(list)
+    for m in all_mensalidades:
+        by_student[m["student_id"]].append(m)
+
+    rows = []
+    total_pago = total_pendente = total_atrasado = 0.0
+    label = PERIODO_LABELS.get(periodo, PERIODO_LABELS["todo"])
+    for s in students:
+        historico = by_student.get(s["id"], [])
+        filtrado, label = filter_mensalidades_by_period(historico, periodo, inicio, fim)
+        pago = sum(m["valor"] for m in filtrado if m["status"] == "pago")
+        pendente = sum(m["valor"] for m in filtrado if m["status"] == "pendente")
+        atrasado = sum(m["valor"] for m in filtrado if m["status"] == "atrasado")
+        rows.append({
+            "name": display_name(s),
+            "situacao": billing_indicator(s["id"]),
+            "pago": pago, "pendente": pendente, "atrasado": atrasado,
+        })
+        total_pago += pago
+        total_pendente += pendente
+        total_atrasado += atrasado
+
+    buffer = build_general_report_pdf(rows, label, total_pago, total_pendente, total_atrasado)
+    filename = f"relatorio-geral-elite-hapkido-{today_str()}.pdf"
+    return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name=filename)
 
 
 # Cria/atualiza as tabelas do banco assim que o módulo é carregado — precisa
