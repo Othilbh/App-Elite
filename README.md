@@ -100,6 +100,7 @@ Os arquivos necessários (`static/manifest.json`, `static/sw.js`, `static/icons/
 App-Elite/
   app.py                  → toda a lógica (rotas, banco de dados, PIN, export)
   requirements.txt
+  runtime.txt             → fixa a versão do Python usada no deploy (evita incompatibilidade com libs)
   static/
     css/style.css         → visual do app
     manifest.json         → configuração do PWA
