@@ -5,6 +5,11 @@
 <section class="hero">
   <h1>Painel do professor</h1>
   <p>{{ total_alunos }} aluno(s) ativo(s)</p>
+  {% if using_postgres %}
+    <p class="badge badge-approved">🟢 Banco: Postgres (dados persistentes)</p>
+  {% else %}
+    <p class="badge badge-rejected">🔴 Banco: SQLite local — DATABASE_URL não está configurada! Os dados serão perdidos no próximo deploy.</p>
+  {% endif %}
 </section>
 
 <section>

@@ -750,7 +750,11 @@ def admin_dashboard():
     ).fetchone()["total"]
 
     return render_template(
-        "admin_dashboard.html", pendentes=pendentes, recentes=recentes, total_alunos=total_alunos
+        "admin_dashboard.html",
+        pendentes=pendentes,
+        recentes=recentes,
+        total_alunos=total_alunos,
+        using_postgres=USE_POSTGRES,
     )
 
 
