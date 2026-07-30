@@ -8,21 +8,20 @@
 
 <section class="form-card">
   <h2>Cadastrar novo aluno</h2>
-  <form method="post" action="{{ url_for('admin_novo_aluno') }}" enctype="multipart/form-data">
+  <form method="post" action="{{ url_for('admin_novo_aluno') }}">
     <label for="name">Nome completo</label>
     <input type="text" id="name" name="name" required>
 
     <label for="nickname">Apelido (opcional, aparece no ranking se preenchido)</label>
     <input type="text" id="nickname" name="nickname">
 
-    <label for="photo">Foto</label>
-    <input type="file" id="photo" name="photo" accept="image/*">
-
     <label for="pin">PIN de acesso (4 números, opcional — se deixar em branco, um PIN é gerado automaticamente)</label>
     <input type="text" id="pin" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="ex: 1234">
 
     <button type="submit" class="btn btn-primary">Cadastrar</button>
   </form>
+  <p class="muted" style="font-size:0.8rem;margin-top:8px;">Foto e demais dados (nascimento, faixa oficial, contatos) ficam na "Ficha completa" depois de cadastrar.</p>
+</section>
 </section>
 
 <section>

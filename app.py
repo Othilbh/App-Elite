@@ -850,6 +850,7 @@ def admin_editar_aluno(student_id):
         guardian_name = request.form.get("guardian_name", "").strip()
         guardian_phone = request.form.get("guardian_phone", "").strip()
         address = request.form.get("address", "").strip()
+        active = 1 if request.form.get("active") == "on" else 0
 
         if birth_date:
             try:
@@ -859,9 +860,18 @@ def admin_editar_aluno(student_id):
                 return redirect(url_for("admin_editar_aluno", student_id=student_id))
 
         db = get_db()
+
+        file = request.files.get("photo")
+        if file and file.filename:
+            photo_filename = save_student_photo(file, student["name"])
+            if photo_filename is None:
+                flash("Não consegui processar essa foto (formato inválido). O resto da ficha foi salvo.", "info")
+            else:
+                db.execute("UPDATE students SET photo = ? WHERE id = ?", (photo_filename, student_id))
+
         db.execute(
             "UPDATE students SET birth_date = ?, real_belt = ?, phone = ?, "
-            "guardian_name = ?, guardian_phone = ?, address = ? WHERE id = ?",
+            "guardian_name = ?, guardian_phone = ?, address = ?, active = ? WHERE id = ?",
             (
                 birth_date or None,
                 real_belt or None,
@@ -869,6 +879,7 @@ def admin_editar_aluno(student_id):
                 guardian_name or None,
                 guardian_phone or None,
                 address or None,
+                active,
                 student_id,
             ),
         )
@@ -898,18 +909,13 @@ def admin_novo_aluno():
     if not pin:
         pin = generate_pin()
 
-    file = request.files.get("photo")
-    photo_filename = save_student_photo(file, name)
-    if file and file.filename and photo_filename is None:
-        flash("Não consegui processar essa foto (formato inválido). Aluno cadastrado sem foto.", "info")
-
     db = get_db()
     db.execute(
-        "INSERT INTO students (name, nickname, photo, pin, active, created_at) VALUES (?, ?, ?, ?, 1, ?)",
-        (name, nickname or None, photo_filename, pin, datetime.now().isoformat()),
+        "INSERT INTO students (name, nickname, pin, active, created_at) VALUES (?, ?, ?, 1, ?)",
+        (name, nickname or None, pin, datetime.now().isoformat()),
     )
     db.commit()
-    flash(f"Aluno {name} cadastrado! PIN de acesso: {pin} (repasse esse número a ele).", "success")
+    flash(f"Aluno {name} cadastrado! PIN de acesso: {pin} (repasse esse número a ele). Adicione foto e mais dados na Ficha completa.", "success")
     return redirect(url_for("admin_alunos"))
 
 

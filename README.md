@@ -32,13 +32,15 @@ Toda foto enviada no cadastro é redimensionada (no máximo 720px no lado maior)
 
 ### Ficha completa do aluno
 
-Além do cadastro rápido (nome, apelido, foto, PIN), o professor pode abrir a **"Ficha completa"** de cada aluno (na tela Alunos) para registrar:
+Além do cadastro rápido (nome, apelido, PIN), o professor pode abrir a **"Ficha completa"** de cada aluno (na tela Alunos) para registrar:
 
+- Foto
 - Data de nascimento (a idade é calculada automaticamente)
 - **Faixa oficial** — a graduação real do aluno no Hapkido, definida pelo professor. É diferente do indicador de "faixa" que aparece no painel do aluno, que é apenas um contador de frequência/engajamento, não uma graduação de verdade. As duas aparecem separadas e identificadas para não gerar confusão.
 - Telefone do aluno
 - Nome e telefone do responsável (para os menores de idade)
 - Endereço
+- **Aluno ativo** — desmarque se ele saiu da academia ou está afastado por um tempo. Ele some do ranking e da tela de check-in, mas todo o histórico de treinos continua salvo (dá pra reativar quando ele voltar). O cadastro rápido continua criando o aluno já como ativo; esse é só um jeito a mais e mais visível de desativar, além do botão "Remover" que já existia na lista.
 
 Esses dados são visíveis só na área do professor — não aparecem em nenhuma tela pública nem no painel do próprio aluno (exceto a faixa oficial, que é mostrada a ele).
 

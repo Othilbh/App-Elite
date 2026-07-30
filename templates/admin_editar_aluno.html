@@ -8,7 +8,14 @@
 </section>
 
 <section class="form-card">
-  <form method="post" action="{{ url_for('admin_editar_aluno', student_id=student.id) }}">
+  <form method="post" action="{{ url_for('admin_editar_aluno', student_id=student.id) }}" enctype="multipart/form-data">
+    <label for="photo">Foto</label>
+    {% if student.photo %}
+      <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.name }}"
+           style="width:64px;height:64px;border-radius:50%;object-fit:cover;margin-bottom:6px;">
+    {% endif %}
+    <input type="file" id="photo" name="photo" accept="image/*">
+
     <label for="birth_date">Data de nascimento</label>
     <input type="date" id="birth_date" name="birth_date" value="{{ student.birth_date or '' }}">
 
@@ -29,6 +36,11 @@
     <label for="address">Endereço</label>
     <input type="text" id="address" name="address" value="{{ student.address or '' }}"
            placeholder="Rua, número, bairro, cidade">
+
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;margin-top:4px;">
+      <input type="checkbox" id="active" name="active" style="width:auto;" {% if student.active %}checked{% endif %}>
+      Aluno ativo (desmarque se ele saiu ou está afastado — some do ranking e da tela de check-in, mas o histórico continua salvo)
+    </label>
 
     <button type="submit" class="btn btn-primary">Salvar ficha</button>
   </form>
