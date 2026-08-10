@@ -17,6 +17,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (Image as RLImage, Paragraph, SimpleDocTemplate,
                                  Spacer, Table, TableStyle)
+from werkzeug.exceptions import NotFound
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -166,6 +167,8 @@ def init_db():
                 name TEXT NOT NULL,
                 nickname TEXT,
                 photo TEXT,
+                photo_data BYTEA,
+                photo_mime TEXT,
                 pin TEXT,
                 pin_attempts INTEGER NOT NULL DEFAULT 0,
                 pin_locked_until TEXT,
@@ -186,9 +189,17 @@ def init_db():
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS teachers (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS checkins (
                 id SERIAL PRIMARY KEY,
                 student_id INTEGER NOT NULL REFERENCES students (id),
+                teacher_id INTEGER REFERENCES teachers (id),
                 workout_date TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL,
@@ -236,6 +247,14 @@ def init_db():
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS due_day INTEGER")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS billing_status TEXT NOT NULL DEFAULT 'ativo'")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS notes TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_data BYTEA")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_mime TEXT")
+        cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS teacher_id INTEGER REFERENCES teachers (id)")
+        cur.execute(
+            "INSERT INTO teachers (name, active, created_at) "
+            "SELECT %s, 1, %s WHERE NOT EXISTS (SELECT 1 FROM teachers)",
+            ("Professor", datetime.now().isoformat()),
+        )
         cur.close()
         conn.close()
         return
@@ -248,6 +267,8 @@ def init_db():
             name TEXT NOT NULL,
             nickname TEXT,
             photo TEXT,
+            photo_data BLOB,
+            photo_mime TEXT,
             pin TEXT,
             pin_attempts INTEGER NOT NULL DEFAULT 0,
             pin_locked_until TEXT,
@@ -268,14 +289,23 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS teachers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS checkins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             student_id INTEGER NOT NULL,
+            teacher_id INTEGER,
             workout_date TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             created_at TEXT NOT NULL,
             reviewed_at TEXT,
-            FOREIGN KEY (student_id) REFERENCES students (id)
+            FOREIGN KEY (student_id) REFERENCES students (id),
+            FOREIGN KEY (teacher_id) REFERENCES teachers (id)
         );
 
         CREATE TABLE IF NOT EXISTS champions (
@@ -322,11 +352,25 @@ def init_db():
         "ALTER TABLE students ADD COLUMN due_day INTEGER",
         "ALTER TABLE students ADD COLUMN billing_status TEXT NOT NULL DEFAULT 'ativo'",
         "ALTER TABLE students ADD COLUMN notes TEXT",
+        "ALTER TABLE students ADD COLUMN photo_data BLOB",
+        "ALTER TABLE students ADD COLUMN photo_mime TEXT",
+        "ALTER TABLE checkins ADD COLUMN teacher_id INTEGER",
     ):
         try:
             db.execute(stmt)
         except sqlite3.OperationalError:
             pass  # coluna já existe
+
+    # Semeia um professor padrão na primeira vez (mantém compatibilidade com
+    # o uso atual, de um único professor) para que o check-in sempre tenha
+    # pelo menos uma opção de professor disponível.
+    existing_teachers = db.execute("SELECT COUNT(*) AS total FROM teachers").fetchone()[0]
+    if not existing_teachers:
+        db.execute(
+            "INSERT INTO teachers (name, active, created_at) VALUES (?, 1, ?)",
+            ("Professor", datetime.now().isoformat()),
+        )
+
     db.commit()
     db.close()
 
@@ -340,8 +384,15 @@ def allowed_file(filename):
 
 def save_student_photo(file_storage, name):
     """Recebe o arquivo de foto enviado, redimensiona e comprime antes de
-    salvar (sempre como .jpg), para não pesar o armazenamento. Retorna o
-    nome do arquivo salvo, ou None se não havia foto ou o arquivo é inválido."""
+    salvar (sempre como .jpg), para não pesar o armazenamento. Retorna uma
+    tupla (filename, image_bytes, mimetype), ou None se não havia foto ou o
+    arquivo é inválido.
+
+    A foto é salva tanto em disco (cache local, útil em dev) quanto — o que
+    realmente importa — devolvida em bytes para quem chamou gravar na coluna
+    photo_data do banco. É essa cópia no banco que garante que a foto
+    sobrevive a reinícios/deploys, mesmo em hospedagens com disco não
+    persistente."""
     if not file_storage or not file_storage.filename:
         return None
     if not allowed_file(file_storage.filename):
@@ -357,13 +408,20 @@ def save_student_photo(file_storage, name):
 
     safe_base = secure_filename(name).lower() or "aluno"
     filename = f"{safe_base}-{int(datetime.now().timestamp())}.jpg"
-    img.save(
-        os.path.join(app.config["UPLOAD_FOLDER"], filename),
-        "JPEG",
-        quality=PHOTO_JPEG_QUALITY,
-        optimize=True,
-    )
-    return filename
+
+    buffer = BytesIO()
+    img.save(buffer, "JPEG", quality=PHOTO_JPEG_QUALITY, optimize=True)
+    image_bytes = buffer.getvalue()
+
+    try:
+        with open(os.path.join(app.config["UPLOAD_FOLDER"], filename), "wb") as fh:
+            fh.write(image_bytes)
+    except OSError:
+        # Disco somente leitura ou indisponível: sem problema, o banco é a
+        # fonte confiável — a foto ainda vai funcionar via photo_data.
+        pass
+
+    return filename, image_bytes, "image/jpeg"
 
 
 def generate_pin():
@@ -1002,6 +1060,18 @@ def get_student(student_id):
     return db.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
 
 
+def get_active_teachers():
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM teachers WHERE active = 1 ORDER BY LOWER(name)"
+    ).fetchall()
+
+
+def get_teacher(teacher_id):
+    db = get_db()
+    return db.execute("SELECT * FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
+
+
 def counts_for_student(student_id):
     """Retorna (semana, mes, ano, total_vitalicio) de check-ins APROVADOS."""
     db = get_db()
@@ -1207,6 +1277,8 @@ def aluno_dashboard(student_id):
         (i + 1 for i, r in enumerate(ranking_month) if r["id"] == student_id), None
     )
 
+    professores = get_active_teachers()
+
     return render_template(
         "aluno_dashboard.html",
         student=student,
@@ -1218,6 +1290,7 @@ def aluno_dashboard(student_id):
         today_checkin=today_checkin,
         ranking_month=ranking_month[:5],
         my_position=my_position,
+        professores=professores,
     )
 
 
@@ -1231,6 +1304,16 @@ def fazer_checkin(student_id):
     if not is_student_verified(student_id):
         return redirect(url_for("aluno_entrar", student_id=student_id))
 
+    teacher_id_raw = request.form.get("teacher_id", "").strip()
+    if not teacher_id_raw.isdigit():
+        flash("Selecione qual professor vai te atender antes de registrar o check-in.", "error")
+        return redirect(url_for("aluno_dashboard", student_id=student_id))
+
+    teacher = get_teacher(int(teacher_id_raw))
+    if not teacher or not teacher["active"]:
+        flash("Professor selecionado inválido. Escolha um professor da lista.", "error")
+        return redirect(url_for("aluno_dashboard", student_id=student_id))
+
     db = get_db()
     existing = db.execute(
         "SELECT * FROM checkins WHERE student_id = ? AND workout_date = ?",
@@ -1240,8 +1323,9 @@ def fazer_checkin(student_id):
         flash("Você já registrou o treino de hoje. Aguarde a confirmação do professor.", "info")
     else:
         db.execute(
-            "INSERT INTO checkins (student_id, workout_date, status, created_at) VALUES (?, ?, 'pending', ?)",
-            (student_id, today_str(), datetime.now().isoformat()),
+            "INSERT INTO checkins (student_id, teacher_id, workout_date, status, created_at) "
+            "VALUES (?, ?, ?, 'pending', ?)",
+            (student_id, teacher["id"], today_str(), datetime.now().isoformat()),
         )
         db.commit()
         flash("Check-in registrado! Assim que o professor confirmar, ele conta no ranking.", "success")
@@ -1339,7 +1423,37 @@ def exportar_ranking():
 
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    """Serve a foto do aluno. Primeiro tenta o disco (mais rápido); se o
+    arquivo não existir mais ali (por exemplo, disco não persistente que foi
+    limpo num redeploy), cai para os bytes guardados no banco de dados na
+    coluna photo_data — essa é a cópia que realmente sobrevive a reinícios."""
+    try:
+        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    except NotFound:
+        pass
+
+    db = get_db()
+    row = db.execute(
+        "SELECT photo_data, photo_mime FROM students WHERE photo = ? AND photo_data IS NOT NULL",
+        (filename,),
+    ).fetchone()
+    if not row or not row["photo_data"]:
+        raise NotFound()
+
+    data = row["photo_data"]
+    if isinstance(data, memoryview):
+        data = data.tobytes()
+    elif isinstance(data, str):
+        # alguns drivers antigos devolvem bytea como string hex; converte.
+        data = bytes.fromhex(data.replace("\\x", ""))
+
+    response = send_file(
+        BytesIO(data),
+        mimetype=row["photo_mime"] or "image/jpeg",
+        download_name=filename,
+    )
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 @app.route("/sw.js")
@@ -1387,14 +1501,16 @@ def admin_dashboard():
 
     db = get_db()
     pendentes = db.execute(
-        "SELECT c.*, s.name, s.nickname, s.photo FROM checkins c "
+        "SELECT c.*, s.name, s.nickname, s.photo, t.name AS teacher_name FROM checkins c "
         "JOIN students s ON s.id = c.student_id "
+        "LEFT JOIN teachers t ON t.id = c.teacher_id "
         "WHERE c.status = 'pending' ORDER BY c.workout_date DESC, c.created_at ASC"
     ).fetchall()
 
     recentes = db.execute(
-        "SELECT c.*, s.name, s.nickname FROM checkins c "
+        "SELECT c.*, s.name, s.nickname, t.name AS teacher_name FROM checkins c "
         "JOIN students s ON s.id = c.student_id "
+        "LEFT JOIN teachers t ON t.id = c.teacher_id "
         "WHERE c.status != 'pending' ORDER BY c.reviewed_at DESC LIMIT 15"
     ).fetchall()
 
@@ -1507,11 +1623,15 @@ def admin_editar_aluno(student_id):
 
         file = request.files.get("photo")
         if file and file.filename:
-            photo_filename = save_student_photo(file, student["name"])
-            if photo_filename is None:
+            result = save_student_photo(file, student["name"])
+            if result is None:
                 flash("Não consegui processar essa foto (formato inválido). O resto da ficha foi salvo.", "info")
             else:
-                db.execute("UPDATE students SET photo = ? WHERE id = ?", (photo_filename, student_id))
+                photo_filename, photo_bytes, photo_mime = result
+                db.execute(
+                    "UPDATE students SET photo = ?, photo_data = ?, photo_mime = ? WHERE id = ?",
+                    (photo_filename, photo_bytes, photo_mime, student_id),
+                )
 
         db.execute(
             "UPDATE students SET birth_date = ?, real_belt = ?, phone = ?, "
@@ -1616,6 +1736,80 @@ def admin_reativar_aluno(student_id):
     db.commit()
     flash("Aluno reativado.", "success")
     return redirect(url_for("admin_alunos"))
+
+
+# --------------------------------------------------------------------------
+# Admin: Professores
+# --------------------------------------------------------------------------
+@app.route("/admin/professores")
+def admin_professores():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    professores = db.execute(
+        "SELECT * FROM teachers ORDER BY active DESC, name ASC"
+    ).fetchall()
+    return render_template("admin_professores.html", professores=professores)
+
+
+@app.route("/admin/professores/novo", methods=["POST"])
+def admin_novo_professor():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("O nome do professor é obrigatório.", "error")
+        return redirect(url_for("admin_professores"))
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO teachers (name, active, created_at) VALUES (?, 1, ?)",
+        (name, datetime.now().isoformat()),
+    )
+    db.commit()
+    flash(f"Professor {name} cadastrado!", "success")
+    return redirect(url_for("admin_professores"))
+
+
+@app.route("/admin/professores/<int:teacher_id>/editar", methods=["POST"])
+def admin_editar_professor(teacher_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("O nome do professor é obrigatório.", "error")
+        return redirect(url_for("admin_professores"))
+
+    db = get_db()
+    db.execute("UPDATE teachers SET name = ? WHERE id = ?", (name, teacher_id))
+    db.commit()
+    flash("Professor atualizado.", "success")
+    return redirect(url_for("admin_professores"))
+
+
+@app.route("/admin/professores/<int:teacher_id>/inativar", methods=["POST"])
+def admin_inativar_professor(teacher_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    # Não apaga o professor nem os check-ins já vinculados a ele — só deixa
+    # de aparecer como opção em novos check-ins. O histórico continua
+    # mostrando corretamente qual professor atendeu cada treino passado.
+    db.execute("UPDATE teachers SET active = 0 WHERE id = ?", (teacher_id,))
+    db.commit()
+    flash("Professor removido da lista de seleção do check-in. O histórico dele foi mantido.", "info")
+    return redirect(url_for("admin_professores"))
+
+
+@app.route("/admin/professores/<int:teacher_id>/reativar", methods=["POST"])
+def admin_reativar_professor(teacher_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("UPDATE teachers SET active = 1 WHERE id = ?", (teacher_id,))
+    db.commit()
+    flash("Professor reativado.", "success")
+    return redirect(url_for("admin_professores"))
 
 
 @app.route("/admin/campeoes")

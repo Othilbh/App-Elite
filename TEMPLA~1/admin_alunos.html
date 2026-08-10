@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Alunos{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Alunos</h1>
+</section>
+
+<section class="form-card">
+  <h2>Cadastrar novo aluno</h2>
+  <form method="post" action="{{ url_for('admin_novo_aluno') }}">
+    <label for="name">Nome completo</label>
+    <input type="text" id="name" name="name" required>
+
+    <label for="nickname">Apelido (opcional, aparece no ranking se preenchido)</label>
+    <input type="text" id="nickname" name="nickname">
+
+    <label for="pin">PIN de acesso (4 números, opcional — se deixar em branco, um PIN é gerado automaticamente)</label>
+    <input type="text" id="pin" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="ex: 1234">
+
+    <button type="submit" class="btn btn-primary">Cadastrar</button>
+  </form>
+  <p class="muted" style="font-size:0.8rem;margin-top:8px;">Foto e demais dados (nascimento, faixa oficial, contatos) ficam na "Ficha completa" depois de cadastrar.</p>
+</section>
+</section>
+
+<section>
+  <h2>Todos os alunos</h2>
+  <ul class="student-list">
+    {% for s in students %}
+      <li class="{{ 'inactive' if not s.active }}">
+        {% if s.photo %}
+          <img src="{{ url_for('uploaded_file', filename=s.photo) }}" alt="{{ s.name }}">
+        {% else %}
+          <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[s.id % (AVATAR_COLORS|length)] }};">{{ s.name[0] }}</div>
+        {% endif %}
+        <div class="student-info">
+          <strong>
+            {% set ind = indicadores.get(s.id) %}
+            {% if ind == 'green' %}🟢{% elif ind == 'yellow' %}🟡{% elif ind == 'red' %}🔴{% endif %}
+            {{ s.nickname or s.name }}
+          </strong>
+          {% if s.nickname %}<span class="muted">{{ s.name }}</span>{% endif %}
+          {% if s.real_belt %}<span class="muted">🥋 {{ s.real_belt }}</span>{% endif %}
+          {% if s.pin %}
+            {% if s.pin_is_custom %}
+              <span class="muted">PIN: alterado pelo aluno (oculto)</span>
+            {% else %}
+              <span class="muted">PIN: {{ s.pin }}</span>
+            {% endif %}
+          {% endif %}
+          {% if not s.active %}<span class="badge badge-rejected">Inativo</span>{% endif %}
+        </div>
+        <a href="{{ url_for('admin_perfil_financeiro', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">💰 Financeiro</a>
+        <a href="{{ url_for('admin_editar_aluno', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Ficha completa</a>
+        <form method="post" action="{{ url_for('admin_novo_pin', student_id=s.id) }}"
+              {% if s.pin_is_custom %}onsubmit="return confirm('Esse aluno já escolheu o próprio PIN. Gerar um novo vai substituir a senha dele. Continuar?');"{% endif %}>
+          <button type="submit" class="btn btn-small" style="background:#262a33;color:var(--text);">Gerar novo PIN</button>
+        </form>
+        {% if s.active %}
+          <form method="post" action="{{ url_for('admin_inativar_aluno', student_id=s.id) }}">
+            <button type="submit" class="btn btn-reject btn-small">Remover</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('admin_reativar_aluno', student_id=s.id) }}">
+            <button type="submit" class="btn btn-approve btn-small">Reativar</button>
+          </form>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+
+{% endblock %}

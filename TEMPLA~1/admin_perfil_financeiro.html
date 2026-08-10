@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Perfil de {{ student.nickname or student.name }}{% endblock %}
+{% block content %}
+
+<section class="profile-header">
+  {% if student.photo %}
+    <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.nickname or student.name }}">
+  {% else %}
+    <div class="avatar-placeholder big" style="background:{{ AVATAR_COLORS[student.id % (AVATAR_COLORS|length)] }};">{{ (student.nickname or student.name)[0] }}</div>
+  {% endif %}
+  <div>
+    <h1>{{ student.nickname or student.name }}</h1>
+    <p class="muted">
+      {{ student.name }}{% if age %} · {{ age }} anos{% endif %}{% if student.modality %} · {{ student.modality }}{% endif %}
+    </p>
+    {% if situacao == 'green' %}<span class="badge badge-approved">🟢 Em dia</span>
+    {% elif situacao == 'yellow' %}<span class="badge badge-pending">🟡 Vence hoje</span>
+    {% elif situacao == 'red' %}<span class="badge badge-rejected">🔴 Em atraso</span>
+    {% else %}<span class="badge" style="background:#262a33;color:var(--muted);">Sem mensalidade cadastrada</span>
+    {% endif %}
+  </div>
+</section>
+
+<section class="fin-cards" style="margin-bottom:20px;">
+  <div class="fin-card">
+    <span class="fin-label">Check-ins (semana)</span>
+    <span class="fin-value">{{ week }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Check-ins (mês)</span>
+    <span class="fin-value">{{ month }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Check-ins (ano)</span>
+    <span class="fin-value">{{ year }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Total de treinos</span>
+    <span class="fin-value">{{ total_checkins }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Posição no ranking (ano)</span>
+    <span class="fin-value">{{ '#' + my_position|string if my_position else '—' }}</span>
+  </div>
+  <div class="fin-card">
+    <span class="fin-label">Última presença</span>
+    <span class="fin-value" style="font-size:1.1rem;">{{ ultima_presenca or '—' }}</span>
+  </div>
+</section>
+
+<section class="form-card">
+  <h2>🗓️ Lançar mensalidade no histórico</h2>
+  <p class="muted" style="font-size:0.8rem;margin-top:-4px;">Use pra registrar meses anteriores (de antes do app) ou qualquer mês que não tenha sido gerado automaticamente.</p>
+  <form method="post" action="{{ url_for('admin_nova_mensalidade', student_id=student.id) }}">
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;">
+        <label for="ref_month">Mês</label>
+        <select id="ref_month" name="ref_month" required>
+          {% for i in range(1, 13) %}
+            <option value="{{ i }}">{{ MESES_PT[i] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;">
+        <label for="ref_year">Ano</label>
+        <input type="number" id="ref_year" name="ref_year" value="{{ current_year }}" required>
+      </div>
+    </div>
+
+    <label for="valor">Valor (R$)</label>
+    <input type="text" id="valor" name="valor" value="{{ student.monthly_fee or '' }}" inputmode="decimal" required>
+
+    <label for="due_date">Data de vencimento (opcional — se deixar em branco, usa o dia de vencimento cadastrado)</label>
+    <input type="date" id="due_date" name="due_date">
+
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      {% for value, label in MENSALIDADE_STATUSES %}
+        <option value="{{ value }}" {% if value == 'pago' %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="payment_date">Data do pagamento (se já pago)</label>
+    <input type="date" id="payment_date" name="payment_date">
+
+    <label for="payment_method">Forma de pagamento</label>
+    <select id="payment_method" name="payment_method">
+      <option value="">—</option>
+      {% for value, label in PAYMENT_METHODS %}
+        <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="notes">Observações</label>
+    <textarea id="notes" name="notes" rows="2" placeholder="ex: pago em dinheiro antes de usar o app"></textarea>
+
+    <button type="submit" class="btn btn-primary btn-small">Lançar mensalidade</button>
+  </form>
+</section>
+
+<section class="form-card">
+  <h2>📄 Gerar PDF</h2>
+  <form method="get" action="{{ url_for('admin_aluno_pdf', student_id=student.id) }}" class="fin-filters" id="pdf-form-individual">
+    <select name="periodo">
+      <option value="mes_atual">Mês atual</option>
+      <option value="3m">Últimos 3 meses</option>
+      <option value="6m">Últimos 6 meses</option>
+      <option value="12m">Últimos 12 meses</option>
+      <option value="todo">Todo o histórico</option>
+      <option value="custom">Intervalo personalizado</option>
+    </select>
+    <input type="date" name="inicio" placeholder="Início (se personalizado)">
+    <input type="date" name="fim" placeholder="Fim (se personalizado)">
+    <button type="submit" class="btn btn-primary btn-small">Gerar PDF</button>
+  </form>
+</section>
+
+<script>
+  (function () {
+    var form = document.getElementById('pdf-form-individual');
+    if (!form) return;
+    var btn = form.querySelector('button[type="submit"]');
+    var original = btn.textContent;
+    form.addEventListener('submit', function () {
+      btn.disabled = true;
+      btn.textContent = 'Gerando PDF...';
+      // Rede de segurança: mesmo sem confirmação explícita de download concluído
+      // (o navegador não avisa isso pra downloads), o botão nunca fica travado.
+      setTimeout(function () {
+        btn.disabled = false;
+        btn.textContent = original;
+      }, 2500);
+    });
+    // Se o usuário voltar pra essa página (ex: gesto de voltar do navegador),
+    // garante que o botão nunca fique preso no estado "Gerando...".
+    window.addEventListener('pageshow', function () {
+      btn.disabled = false;
+      btn.textContent = original;
+    });
+  })();
+</script>
+
+<section class="form-card">
+  <h2>Dados cadastrais</h2>
+  <p><strong>Telefone:</strong> {{ student.phone or '—' }}</p>
+  <p><strong>E-mail:</strong> {{ student.email or '—' }}</p>
+  <p><strong>Nascimento:</strong> {{ student.birth_date or '—' }}</p>
+  <p><strong>Faixa oficial:</strong> {{ student.real_belt or '—' }}</p>
+  <p><strong>Responsável:</strong> {{ student.guardian_name or '—' }}{% if student.guardian_phone %} · {{ student.guardian_phone }}{% endif %}</p>
+  <p><strong>Endereço:</strong> {{ student.address or '—' }}</p>
+  <p><strong>Status de matrícula:</strong> {{ student.billing_status }}</p>
+  <p><strong>Mensalidade:</strong> {% if student.monthly_fee %}{{ student.monthly_fee|reais }} · vencimento dia {{ student.due_day or '—' }}{% else %}não configurada{% endif %}</p>
+  {% if student.notes %}<p><strong>Observações:</strong> {{ student.notes }}</p>{% endif %}
+  <a href="{{ url_for('admin_editar_aluno', student_id=student.id) }}" class="btn btn-small" style="text-decoration:none;">Editar ficha</a>
+</section>
+
+<section>
+  <h2>Histórico de mensalidades</h2>
+  <div class="fin-list">
+    {% for m in historico %}
+      <div class="fin-row">
+        <div class="fin-row-top">
+          <div class="fin-row-info">
+            <strong>{{ month_name_pt(m.ref_month) }}/{{ m.ref_year }}</strong>
+          </div>
+          <span class="fin-valor">{{ m.valor|reais }}</span>
+        </div>
+        <div class="fin-row-bottom">
+          {% if m.status == 'pago' %}
+            <span class="badge badge-approved">Pago em {{ m.payment_date }}{% if m.payment_method %} · {{ PAYMENT_METHODS|selectattr('0','equalto', m.payment_method)|map(attribute='1')|first }}{% endif %}</span>
+          {% elif m.status == 'atrasado' %}
+            <span class="badge badge-rejected">Atrasado há {{ days_overdue(m.due_date) }} dia{{ 's' if days_overdue(m.due_date) != 1 }}</span>
+          {% elif m.status == 'isento' %}
+            <span class="badge badge-approved">Isento</span>
+          {% else %}
+            <span class="badge badge-pending">Pendente · vence {{ m.due_date }}</span>
+          {% endif %}
+          <a href="{{ url_for('admin_editar_mensalidade', mensalidade_id=m.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Editar</a>
+        </div>
+      </div>
+    {% else %}
+      <p class="muted" style="text-align:center;padding:20px 0;">Nenhuma mensalidade registrada ainda.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<a href="{{ url_for('admin_alunos') }}" class="link-back">← Voltar para Alunos</a>
+
+{% endblock %}

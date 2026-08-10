@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Login do professor{% endblock %}
+{% block content %}
+
+<section class="auth-box">
+  <h1>Login do professor</h1>
+  <form method="post">
+    <label for="senha">Senha</label>
+    <input type="password" id="senha" name="senha" required autofocus>
+    <button type="submit" class="btn btn-primary">Entrar</button>
+  </form>
+</section>
+
+{% endblock %}

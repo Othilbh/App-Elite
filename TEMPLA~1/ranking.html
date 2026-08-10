@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Ranking{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Ranking de treinos</h1>
+</section>
+
+{% if champion %}
+<section class="champion-banner">
+  <span class="trophy">🏆</span>
+  <div>
+    <strong>Campeão {{ champion.year }}:</strong> {{ champion.nickname or champion.name }}
+    ({{ champion.total_checkins }} treinos)
+  </div>
+</section>
+{% endif %}
+
+<div class="tabs">
+  <a href="{{ url_for('ranking', periodo='week') }}" class="{{ 'active' if period == 'week' }}">Semana</a>
+  <a href="{{ url_for('ranking', periodo='month') }}" class="{{ 'active' if period == 'month' }}">Mês</a>
+  <a href="{{ url_for('ranking', periodo='year') }}" class="{{ 'active' if period == 'year' }}">Ano</a>
+</div>
+
+<ol class="ranking-list full">
+  {% for r in ranking %}
+    <li>
+      <span class="rank-pos">
+        {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+      </span>
+      {% if r.photo %}
+        <img class="rank-avatar" src="{{ url_for('uploaded_file', filename=r.photo) }}" alt="{{ r.name }}">
+      {% else %}
+        <span class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[r.id % (AVATAR_COLORS|length)] }};">{{ r.name[0] }}</span>
+      {% endif %}
+      <span class="rank-name">{{ r.name }}</span>
+      <span class="rank-count">{{ r.count }} treino{{ 's' if r.count != 1 }}</span>
+    </li>
+  {% else %}
+    <p class="empty-state">Ainda não há check-ins confirmados neste período.</p>
+  {% endfor %}
+</ol>
+
+<a href="{{ url_for('index') }}" class="link-back">← Voltar</a>
+{% if is_admin %}
+  <a href="{{ url_for('exportar_ranking', periodo=period) }}" class="link-more" style="margin-left:16px;">⬇️ Exportar Excel</a>
+{% endif %}
+
+{% endblock %}
