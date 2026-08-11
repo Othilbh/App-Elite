@@ -50,27 +50,70 @@
 <section class="checkin-box">
   {% if today_checkin %}
     {% if today_checkin.status == 'pending' %}
-      <p class="badge badge-pending">⏳ Check-in de hoje aguardando confirmação do professor</p>
+      <p class="badge badge-pending">⏳ Check-in de hoje com {{ today_checkin.teacher_name or "professor não informado" }}, aguardando confirmação</p>
     {% elif today_checkin.status == 'approved' %}
       <p class="badge badge-approved">✅ Presença de hoje confirmada!</p>
     {% else %}
       <p class="badge badge-rejected">❌ Check-in de hoje não foi confirmado</p>
     {% endif %}
   {% else %}
-    <form method="post" action="{{ url_for('fazer_checkin', student_id=student.id) }}">
-      <label for="teacher_id">Professor que vai te atender hoje</label>
+    <form method="post" action="{{ url_for('fazer_checkin', student_id=student.id) }}" id="checkin-form">
+      <div id="checkin-step-select">
+        <label for="teacher_id">Selecione seu professor</label>
+        {% if professores %}
+          <select id="teacher_id" name="teacher_id" required>
+            <option value="" disabled selected>Selecione o professor</option>
+            {% for p in professores %}
+              <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn btn-primary btn-big" id="checkin-continue-btn">Continuar</button>
+        {% else %}
+          <p class="muted">Nenhum professor cadastrado ainda — peça para o professor se cadastrar em "Professores" no painel.</p>
+          <button type="submit" class="btn btn-primary btn-big" disabled>Registrar treino de hoje</button>
+        {% endif %}
+      </div>
       {% if professores %}
-        <select id="teacher_id" name="teacher_id" required>
-          <option value="" disabled selected>Selecione o professor</option>
-          {% for p in professores %}
-            <option value="{{ p.id }}">{{ p.name }}</option>
-          {% endfor %}
-        </select>
-      {% else %}
-        <p class="muted">Nenhum professor cadastrado ainda — peça para o professor se cadastrar em "Professores" no painel.</p>
+        <div id="checkin-step-confirm" style="display:none;">
+          <div class="belt-block" style="text-align:left;">
+            <p class="muted" style="margin:0 0 6px;">Confirme os dados do treino:</p>
+            <p style="margin:2px 0;"><strong>Aluno:</strong> {{ student.nickname or student.name }}</p>
+            <p style="margin:2px 0;"><strong>Professor:</strong> <span id="checkin-confirm-teacher"></span></p>
+            <p style="margin:2px 0;"><strong>Horário:</strong> <span id="checkin-confirm-time"></span></p>
+          </div>
+          <button type="submit" class="btn btn-approve btn-big" style="margin-top:10px;">CONFIRMAR TREINO</button>
+          <button type="button" class="btn btn-small" id="checkin-back-btn" style="margin-top:8px;background:#262a33;color:var(--text);">← Voltar</button>
+        </div>
       {% endif %}
-      <button type="submit" class="btn btn-primary btn-big" {{ 'disabled' if not professores }}>Registrar treino de hoje</button>
     </form>
+    <script>
+      (function () {
+        var continueBtn = document.getElementById('checkin-continue-btn');
+        var backBtn = document.getElementById('checkin-back-btn');
+        var select = document.getElementById('teacher_id');
+        var stepSelect = document.getElementById('checkin-step-select');
+        var stepConfirm = document.getElementById('checkin-step-confirm');
+        if (continueBtn) {
+          continueBtn.addEventListener('click', function () {
+            if (!select.value) { select.reportValidity(); return; }
+            var teacherName = select.options[select.selectedIndex].text;
+            document.getElementById('checkin-confirm-teacher').textContent = teacherName;
+            var now = new Date();
+            var hh = String(now.getHours()).padStart(2, '0');
+            var mm = String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('checkin-confirm-time').textContent = hh + ':' + mm;
+            stepSelect.style.display = 'none';
+            stepConfirm.style.display = 'block';
+          });
+        }
+        if (backBtn) {
+          backBtn.addEventListener('click', function () {
+            stepConfirm.style.display = 'none';
+            stepSelect.style.display = 'block';
+          });
+        }
+      })();
+    </script>
   {% endif %}
 </section>
 
