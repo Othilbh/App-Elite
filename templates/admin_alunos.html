@@ -24,8 +24,24 @@
 </section>
 </section>
 
+<section class="form-card" style="padding:14px 16px;">
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <div style="flex:1;min-width:160px;">
+      <label for="q" style="font-size:0.75rem;">Buscar por nome</label>
+      <input type="text" id="q" name="q" value="{{ q }}" placeholder="Nome ou apelido">
+    </div>
+    <input type="hidden" name="status" value="{{ status }}" id="status-hidden">
+    <button type="submit" class="btn btn-small btn-primary">Buscar</button>
+  </form>
+  <div class="tabs" style="margin:12px 0 0;justify-content:flex-start;">
+    <a href="{{ url_for('admin_alunos', q=q, status='ativos') }}" class="{{ 'active' if status == 'ativos' }}">Ativos</a>
+    <a href="{{ url_for('admin_alunos', q=q, status='inativos') }}" class="{{ 'active' if status == 'inativos' }}">Inativos</a>
+    <a href="{{ url_for('admin_alunos', q=q, status='todos') }}" class="{{ 'active' if status == 'todos' }}">Todos</a>
+  </div>
+</section>
+
 <section>
-  <h2>Todos os alunos</h2>
+  <h2>Todos os alunos ({{ students|length }})</h2>
   <ul class="student-list">
     {% for s in students %}
       <li class="{{ 'inactive' if not s.active }}">
@@ -51,6 +67,7 @@
           {% endif %}
           {% if not s.active %}<span class="badge badge-rejected">Inativo</span>{% endif %}
         </div>
+        <a href="{{ url_for('admin_aluno_frequencia', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">📊 Frequência</a>
         <a href="{{ url_for('admin_perfil_financeiro', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">💰 Financeiro</a>
         <a href="{{ url_for('admin_editar_aluno', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Ficha completa</a>
         <form method="post" action="{{ url_for('admin_novo_pin', student_id=s.id) }}"
