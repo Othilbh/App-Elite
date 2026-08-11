@@ -39,10 +39,6 @@ if USE_POSTGRES:
 else:
     IntegrityError = sqlite3.IntegrityError
 
-# Senha padrão do painel do professor/admin. TROQUE antes de usar de verdade!
-# Pode também ser definida pela variável de ambiente ADMIN_PASSWORD.
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "treino123")
-
 # Limites de tentativas de PIN (proteção simples contra tentativa e erro).
 MAX_PIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
@@ -1500,28 +1496,21 @@ def admin_login():
         username = request.form.get("username", "").strip()
         senha = request.form.get("senha", "")
 
-        if username:
-            # Login individual de professor: usuário + senha próprios.
-            teacher = get_teacher_by_username(username)
-            if (
-                teacher
-                and teacher["active"]
-                and teacher["password_hash"]
-                and check_password_hash(teacher["password_hash"], senha)
-            ):
-                session["is_admin"] = True
-                session["teacher_id"] = teacher["id"]
-                flash(f"Login realizado. Bem-vindo(a), {teacher['name']}!", "success")
-                return redirect(url_for("admin_dashboard"))
-            flash("Usuário ou senha incorretos.", "error")
-        else:
-            # Login mestre (acesso administrativo geral, sem professor vinculado).
-            if senha == ADMIN_PASSWORD:
-                session["is_admin"] = True
-                session.pop("teacher_id", None)
-                flash("Login realizado.", "success")
-                return redirect(url_for("admin_dashboard"))
-            flash("Senha incorreta.", "error")
+        # Login individual de professor: usuário + senha próprios. Todo
+        # professor tem o mesmo nível de acesso (não existe mais um login
+        # "mestre" separado — cada professor já enxerga tudo que precisa).
+        teacher = get_teacher_by_username(username) if username else None
+        if (
+            teacher
+            and teacher["active"]
+            and teacher["password_hash"]
+            and check_password_hash(teacher["password_hash"], senha)
+        ):
+            session["is_admin"] = True
+            session["teacher_id"] = teacher["id"]
+            flash(f"Login realizado. Bem-vindo(a), {teacher['name']}!", "success")
+            return redirect(url_for("admin_dashboard"))
+        flash("Usuário ou senha incorretos.", "error")
     return render_template("admin_login.html")
 
 
