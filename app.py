@@ -1105,6 +1105,66 @@ def counts_for_student(student_id):
     return week, month, year, len(rows)
 
 
+def student_frequency_stats(student_id):
+    """Estatísticas de frequência do aluno: total, mês, semana, ano, último
+    treino, média semanal e sequência atual de dias treinados (streak).
+    Baseado só em check-ins APROVADOS, igual ao resto do app (ranking,
+    contadores de faixa)."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT workout_date FROM checkins WHERE student_id = ? AND status = 'approved'",
+        (student_id,),
+    ).fetchall()
+    week, month, year, total = counts_for_student(student_id)
+    dates = sorted({date.fromisoformat(r["workout_date"]) for r in rows}, reverse=True)
+
+    last_checkin = dates[0].isoformat() if dates else None
+
+    if dates:
+        first = min(dates)
+        weeks_elapsed = max(1, ((date.today() - first).days // 7) + 1)
+        weekly_avg = round(total / weeks_elapsed, 1)
+    else:
+        weekly_avg = 0
+
+    streak = 0
+    if dates and dates[0] in (date.today(), date.today() - timedelta(days=1)):
+        cursor = dates[0]
+        for d in dates:
+            if d == cursor:
+                streak += 1
+                cursor = cursor - timedelta(days=1)
+            elif d < cursor:
+                break
+
+    return {
+        "total": total,
+        "month": month,
+        "week": week,
+        "year": year,
+        "last_checkin": last_checkin,
+        "weekly_avg": weekly_avg,
+        "streak": streak,
+    }
+
+
+def student_checkin_history(student_id, months=None):
+    """Histórico de check-ins do aluno (todos os status), com nome do
+    professor, mais recente primeiro. Se months for informado, filtra aos
+    últimos N meses."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT c.*, t.name AS teacher_name FROM checkins c "
+        "LEFT JOIN teachers t ON t.id = c.teacher_id "
+        "WHERE c.student_id = ? ORDER BY c.workout_date DESC, c.created_at DESC",
+        (student_id,),
+    ).fetchall()
+    if not months:
+        return rows
+    cutoff = date.today() - timedelta(days=30 * months)
+    return [r for r in rows if date.fromisoformat(r["workout_date"]) >= cutoff]
+
+
 def build_ranking(period):
     """period: 'week' | 'month' | 'year'. Retorna lista ordenada de dicts."""
     db = get_db()
@@ -1126,6 +1186,8 @@ def build_ranking(period):
             match = d.year == today.year and d.month == today.month
         elif period == "year":
             match = d.year == today.year
+        elif period == "all":
+            match = True
         if match:
             tally[r["student_id"]] += 1
 
@@ -1289,7 +1351,9 @@ def aluno_dashboard(student_id):
 
     db = get_db()
     today_checkin = db.execute(
-        "SELECT * FROM checkins WHERE student_id = ? AND workout_date = ?",
+        "SELECT c.*, t.name AS teacher_name FROM checkins c "
+        "LEFT JOIN teachers t ON t.id = c.teacher_id "
+        "WHERE c.student_id = ? AND c.workout_date = ?",
         (student_id, today_str()),
     ).fetchone()
 
@@ -1341,15 +1405,21 @@ def fazer_checkin(student_id):
         (student_id, today_str()),
     ).fetchone()
     if existing:
-        flash("Você já registrou o treino de hoje. Aguarde a confirmação do professor.", "info")
+        flash("⚠️ Você já registrou o treino de hoje. Aguarde a confirmação do professor.", "info")
     else:
+        now = datetime.now()
         db.execute(
             "INSERT INTO checkins (student_id, teacher_id, workout_date, status, created_at) "
             "VALUES (?, ?, ?, 'pending', ?)",
-            (student_id, teacher["id"], today_str(), datetime.now().isoformat()),
+            (student_id, teacher["id"], today_str(), now.isoformat()),
         )
         db.commit()
-        flash("Check-in registrado! Assim que o professor confirmar, ele conta no ranking.", "success")
+        flash(
+            f"✅ Treino registrado com sucesso! Professor: {teacher['name']} • "
+            f"{now.strftime('%H:%M')} • {now.strftime('%d/%m/%Y')}. Assim que o professor "
+            "confirmar, ele conta no ranking.",
+            "success",
+        )
 
     return redirect(url_for("aluno_dashboard", student_id=student_id))
 
@@ -1386,7 +1456,7 @@ def alterar_pin(student_id):
 @app.route("/ranking")
 def ranking():
     period = request.args.get("periodo", "month")
-    if period not in ("week", "month", "year"):
+    if period not in ("week", "month", "year", "all"):
         period = "month"
     data = build_ranking(period)
 
@@ -1552,11 +1622,30 @@ def admin_dashboard():
         "SELECT COUNT(*) AS total FROM students WHERE active = 1"
     ).fetchone()["total"]
 
+    hoje = today_str()
+    treinos_hoje = db.execute(
+        "SELECT COUNT(*) AS total FROM checkins WHERE workout_date = ?", (hoje,)
+    ).fetchone()["total"]
+    presentes_hoje = db.execute(
+        "SELECT COUNT(DISTINCT student_id) AS total FROM checkins WHERE workout_date = ?", (hoje,)
+    ).fetchone()["total"]
+    professores_ativos = db.execute(
+        "SELECT COUNT(*) AS total FROM teachers WHERE active = 1"
+    ).fetchone()["total"]
+    primeiro_dia_mes = date.today().replace(day=1).isoformat()
+    treinos_mes = db.execute(
+        "SELECT COUNT(*) AS total FROM checkins WHERE workout_date >= ?", (primeiro_dia_mes,)
+    ).fetchone()["total"]
+
     return render_template(
         "admin_dashboard.html",
         pendentes=pendentes,
         recentes=recentes,
         total_alunos=total_alunos,
+        treinos_hoje=treinos_hoje,
+        presentes_hoje=presentes_hoje,
+        professores_ativos=professores_ativos,
+        treinos_mes=treinos_mes,
         using_postgres=USE_POSTGRES,
     )
 
@@ -1595,11 +1684,86 @@ def admin_alunos():
         return redirect(url_for("admin_login"))
     refresh_overdue_mensalidades()
     db = get_db()
-    students = db.execute(
-        "SELECT * FROM students ORDER BY active DESC, LOWER(name)"
-    ).fetchall()
+
+    q = request.args.get("q", "").strip()
+    status = request.args.get("status", "ativos")
+    if status not in ("ativos", "inativos", "todos"):
+        status = "ativos"
+
+    query = "SELECT * FROM students WHERE 1=1"
+    params = []
+    if status == "ativos":
+        query += " AND active = 1"
+    elif status == "inativos":
+        query += " AND active = 0"
+    if q:
+        query += " AND (LOWER(name) LIKE ? OR LOWER(nickname) LIKE ?)"
+        like = f"%{q.lower()}%"
+        params.extend([like, like])
+    query += " ORDER BY active DESC, LOWER(name)"
+
+    students = db.execute(query, tuple(params)).fetchall()
     indicadores = {s["id"]: billing_indicator(s["id"]) for s in students}
-    return render_template("admin_alunos.html", students=students, indicadores=indicadores)
+    return render_template(
+        "admin_alunos.html",
+        students=students,
+        indicadores=indicadores,
+        q=q,
+        status=status,
+    )
+
+
+@app.route("/admin/alunos/<int:student_id>/frequencia")
+def admin_aluno_frequencia(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    periodo = request.args.get("periodo", "todos")
+    months_map = {"3m": 3, "6m": 6, "12m": 12}
+    history = student_checkin_history(student_id, months=months_map.get(periodo))
+    stats = student_frequency_stats(student_id)
+
+    return render_template(
+        "admin_aluno_frequencia.html",
+        student=student,
+        stats=stats,
+        history=history,
+        periodo=periodo,
+    )
+
+
+@app.route("/admin/frequencia")
+def admin_frequencia():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    students = get_active_students()
+    rows = []
+    baixa_frequencia = []
+    for s in students:
+        stats = student_frequency_stats(s["id"])
+        dias_sem_treinar = None
+        if stats["last_checkin"]:
+            dias_sem_treinar = (date.today() - date.fromisoformat(stats["last_checkin"])).days
+        item = {"student": s, "stats": stats, "dias_sem_treinar": dias_sem_treinar}
+        rows.append(item)
+        if dias_sem_treinar is None or dias_sem_treinar > 7:
+            baixa_frequencia.append(item)
+
+    rows.sort(key=lambda r: -r["stats"]["total"])
+    baixa_frequencia.sort(
+        key=lambda r: r["dias_sem_treinar"] if r["dias_sem_treinar"] is not None else 999999,
+        reverse=True,
+    )
+
+    return render_template(
+        "admin_frequencia.html",
+        rows=rows,
+        baixa_frequencia=baixa_frequencia,
+    )
 
 
 @app.route("/admin/alunos/<int:student_id>/editar", methods=["GET", "POST"])
