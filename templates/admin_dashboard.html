@@ -4,12 +4,34 @@
 
 <section class="hero">
   <h1>Painel do professor</h1>
-  <p>{{ total_alunos }} aluno(s) ativo(s)</p>
   {% if using_postgres %}
     <p class="badge badge-approved">🟢 Banco: Postgres (dados persistentes)</p>
   {% else %}
     <p class="badge badge-rejected">🔴 Banco: SQLite local — DATABASE_URL não está configurada! Os dados serão perdidos no próximo deploy.</p>
   {% endif %}
+</section>
+
+<section class="stats-grid">
+  <div class="stat-card">
+    <span class="stat-number">{{ total_alunos }}</span>
+    <span class="stat-label">Alunos ativos</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ treinos_hoje }}</span>
+    <span class="stat-label">Treinos hoje</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ presentes_hoje }}</span>
+    <span class="stat-label">Alunos presentes hoje</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ professores_ativos }}</span>
+    <span class="stat-label">Professores ativos</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ treinos_mes }}</span>
+    <span class="stat-label">Treinos no mês</span>
+  </div>
 </section>
 
 <section>
