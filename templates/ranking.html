@@ -20,6 +20,7 @@
   <a href="{{ url_for('ranking', periodo='week') }}" class="{{ 'active' if period == 'week' }}">Semana</a>
   <a href="{{ url_for('ranking', periodo='month') }}" class="{{ 'active' if period == 'month' }}">Mês</a>
   <a href="{{ url_for('ranking', periodo='year') }}" class="{{ 'active' if period == 'year' }}">Ano</a>
+  <a href="{{ url_for('ranking', periodo='all') }}" class="{{ 'active' if period == 'all' }}">Geral</a>
 </div>
 
 <ol class="ranking-list full">
