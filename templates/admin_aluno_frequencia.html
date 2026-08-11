@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Frequência de {{ student.nickname or student.name }}{% endblock %}
+{% block content %}
+
+<section class="profile-header">
+  {% if student.photo %}
+    <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.nickname or student.name }}">
+  {% else %}
+    <div class="avatar-placeholder big" style="background:{{ AVATAR_COLORS[student.id % (AVATAR_COLORS|length)] }};">{{ (student.nickname or student.name)[0] }}</div>
+  {% endif %}
+  <div>
+    <h1>{{ student.nickname or student.name }}</h1>
+    {% if student.nickname %}<p class="muted">{{ student.name }}</p>{% endif %}
+    <p class="muted">
+      {% if student.active %}<span class="badge badge-approved">Ativo</span>{% else %}<span class="badge badge-rejected">Inativo</span>{% endif %}
+      · Cadastrado em {{ student.created_at[:10] if student.created_at else "—" }}
+    </p>
+  </div>
+</section>
+
+<section class="stats-grid">
+  <div class="stat-card">
+    <span class="stat-number">{{ stats.total }}</span>
+    <span class="stat-label">Total de treinos</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ stats.month }}</span>
+    <span class="stat-label">No mês</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ stats.year }}</span>
+    <span class="stat-label">No ano</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ stats.weekly_avg }}</span>
+    <span class="stat-label">Média semanal</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ stats.streak }}</span>
+    <span class="stat-label">Sequência atual</span>
+  </div>
+</section>
+
+<p class="muted" style="margin-bottom:20px;">
+  Último treino: <strong>{{ stats.last_checkin[:10] if stats.last_checkin else "ainda não treinou" }}</strong>
+</p>
+
+<section>
+  <h2>Histórico de treinos</h2>
+  <div class="tabs" style="justify-content:flex-start;">
+    <a href="{{ url_for('admin_aluno_frequencia', student_id=student.id, periodo='3m') }}" class="{{ 'active' if periodo == '3m' }}">3 meses</a>
+    <a href="{{ url_for('admin_aluno_frequencia', student_id=student.id, periodo='6m') }}" class="{{ 'active' if periodo == '6m' }}">6 meses</a>
+    <a href="{{ url_for('admin_aluno_frequencia', student_id=student.id, periodo='12m') }}" class="{{ 'active' if periodo == '12m' }}">12 meses</a>
+    <a href="{{ url_for('admin_aluno_frequencia', student_id=student.id, periodo='todos') }}" class="{{ 'active' if periodo == 'todos' }}">Todo o histórico</a>
+  </div>
+
+  {% if history %}
+    <ul class="recent-list">
+      {% for h in history %}
+        <li>
+          <span>{{ h.workout_date }}</span>
+          <span class="muted">{{ h.created_at[11:16] if h.created_at and h.created_at|length > 15 }}</span>
+          <span class="muted">{{ h.teacher_name or "professor não informado" }}</span>
+          <span class="badge badge-{{ h.status }}">
+            {% if h.status == 'approved' %}✅ Confirmado{% elif h.status == 'rejected' %}❌ Rejeitado{% else %}⏳ Pendente{% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">Nenhum treino registrado nesse período.</p>
+  {% endif %}
+</section>
+
+<a href="{{ url_for('admin_alunos') }}" class="link-back">← Voltar para Alunos</a>
+
+{% endblock %}
