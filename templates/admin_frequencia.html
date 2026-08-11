@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Frequência{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Frequência dos alunos</h1>
+</section>
+
+{% if baixa_frequencia %}
+<section>
+  <h2>⚠️ Alunos sem treino há mais de 7 dias ({{ baixa_frequencia|length }})</h2>
+  <ul class="student-list">
+    {% for item in baixa_frequencia %}
+      <li>
+        {% if item.student.photo %}
+          <img src="{{ url_for('uploaded_file', filename=item.student.photo) }}" alt="{{ item.student.name }}">
+        {% else %}
+          <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[item.student.id % (AVATAR_COLORS|length)] }};">{{ (item.student.nickname or item.student.name)[0] }}</div>
+        {% endif %}
+        <div class="student-info">
+          <strong>{{ item.student.nickname or item.student.name }}</strong>
+          {% if item.dias_sem_treinar is none %}
+            <span class="muted">Nunca treinou</span>
+          {% else %}
+            <span class="muted">{{ item.dias_sem_treinar }} dias sem treinar</span>
+          {% endif %}
+        </div>
+        <a href="{{ url_for('admin_aluno_frequencia', student_id=item.student.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Ver perfil</a>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<section>
+  <p class="empty-state">✅ Nenhum aluno ativo sem treinar há mais de 7 dias.</p>
+</section>
+{% endif %}
+
+<section>
+  <h2>Todos os alunos ativos</h2>
+  <ul class="student-list">
+    {% for item in rows %}
+      <li>
+        {% if item.student.photo %}
+          <img src="{{ url_for('uploaded_file', filename=item.student.photo) }}" alt="{{ item.student.name }}">
+        {% else %}
+          <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[item.student.id % (AVATAR_COLORS|length)] }};">{{ (item.student.nickname or item.student.name)[0] }}</div>
+        {% endif %}
+        <div class="student-info">
+          <strong>{{ item.student.nickname or item.student.name }}</strong>
+          <span class="muted">{{ item.stats.total }} treino{{ 's' if item.stats.total != 1 }} no total · {{ item.stats.month }} no mês · sequência: {{ item.stats.streak }}</span>
+        </div>
+        <a href="{{ url_for('admin_aluno_frequencia', student_id=item.student.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Ver perfil</a>
+      </li>
+    {% else %}
+      <p class="empty-state">Nenhum aluno ativo cadastrado.</p>
+    {% endfor %}
+  </ul>
+</section>
+
+{% endblock %}
