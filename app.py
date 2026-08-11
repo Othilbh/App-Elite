@@ -192,6 +192,8 @@ def init_db():
             CREATE TABLE IF NOT EXISTS teachers (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
+                username TEXT UNIQUE,
+                password_hash TEXT,
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
@@ -250,6 +252,8 @@ def init_db():
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_data BYTEA")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_mime TEXT")
         cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS teacher_id INTEGER REFERENCES teachers (id)")
+        cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS username TEXT")
+        cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS password_hash TEXT")
         cur.execute(
             "INSERT INTO teachers (name, active, created_at) "
             "SELECT %s, 1, %s WHERE NOT EXISTS (SELECT 1 FROM teachers)",
@@ -292,6 +296,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS teachers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            username TEXT UNIQUE,
+            password_hash TEXT,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
@@ -355,6 +361,8 @@ def init_db():
         "ALTER TABLE students ADD COLUMN photo_data BLOB",
         "ALTER TABLE students ADD COLUMN photo_mime TEXT",
         "ALTER TABLE checkins ADD COLUMN teacher_id INTEGER",
+        "ALTER TABLE teachers ADD COLUMN username TEXT",
+        "ALTER TABLE teachers ADD COLUMN password_hash TEXT",
     ):
         try:
             db.execute(stmt)
@@ -1072,6 +1080,13 @@ def get_teacher(teacher_id):
     return db.execute("SELECT * FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
 
 
+def get_teacher_by_username(username):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM teachers WHERE LOWER(username) = LOWER(?)", (username,)
+    ).fetchone()
+
+
 def counts_for_student(student_id):
     """Retorna (semana, mes, ano, total_vitalicio) de check-ins APROVADOS."""
     db = get_db()
@@ -1136,10 +1151,20 @@ def is_admin():
     return session.get("is_admin", False)
 
 
+def logged_teacher():
+    """Retorna o professor vinculado ao login atual (ou None, no caso do
+    acesso mestre, que não representa um professor específico)."""
+    teacher_id = session.get("teacher_id")
+    if not teacher_id:
+        return None
+    return get_teacher(teacher_id)
+
+
 @app.context_processor
 def inject_globals():
     return {
         "is_admin": is_admin(),
+        "logged_teacher": logged_teacher(),
         "current_year": date.today().year,
         "AVATAR_COLORS": AVATAR_COLORS,
         "PAYMENT_METHODS": PAYMENT_METHODS,
@@ -1472,18 +1497,38 @@ def service_worker():
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
+        username = request.form.get("username", "").strip()
         senha = request.form.get("senha", "")
-        if senha == ADMIN_PASSWORD:
-            session["is_admin"] = True
-            flash("Login realizado.", "success")
-            return redirect(url_for("admin_dashboard"))
-        flash("Senha incorreta.", "error")
+
+        if username:
+            # Login individual de professor: usuário + senha próprios.
+            teacher = get_teacher_by_username(username)
+            if (
+                teacher
+                and teacher["active"]
+                and teacher["password_hash"]
+                and check_password_hash(teacher["password_hash"], senha)
+            ):
+                session["is_admin"] = True
+                session["teacher_id"] = teacher["id"]
+                flash(f"Login realizado. Bem-vindo(a), {teacher['name']}!", "success")
+                return redirect(url_for("admin_dashboard"))
+            flash("Usuário ou senha incorretos.", "error")
+        else:
+            # Login mestre (acesso administrativo geral, sem professor vinculado).
+            if senha == ADMIN_PASSWORD:
+                session["is_admin"] = True
+                session.pop("teacher_id", None)
+                flash("Login realizado.", "success")
+                return redirect(url_for("admin_dashboard"))
+            flash("Senha incorreta.", "error")
     return render_template("admin_login.html")
 
 
 @app.route("/admin/logout")
 def admin_logout():
     session.pop("is_admin", None)
+    session.pop("teacher_id", None)
     return redirect(url_for("index"))
 
 
@@ -1757,17 +1802,28 @@ def admin_novo_professor():
     if not require_admin():
         return redirect(url_for("admin_login"))
     name = request.form.get("name", "").strip()
+    username = request.form.get("username", "").strip().lower()
+    senha = request.form.get("senha", "")
+
     if not name:
         flash("O nome do professor é obrigatório.", "error")
         return redirect(url_for("admin_professores"))
 
+    if not username or not senha:
+        flash("Usuário e senha são obrigatórios para o professor conseguir fazer login próprio.", "error")
+        return redirect(url_for("admin_professores"))
+
+    if get_teacher_by_username(username):
+        flash(f"Já existe um professor com o usuário '{username}'. Escolha outro.", "error")
+        return redirect(url_for("admin_professores"))
+
     db = get_db()
     db.execute(
-        "INSERT INTO teachers (name, active, created_at) VALUES (?, 1, ?)",
-        (name, datetime.now().isoformat()),
+        "INSERT INTO teachers (name, username, password_hash, active, created_at) VALUES (?, ?, ?, 1, ?)",
+        (name, username, generate_password_hash(senha), datetime.now().isoformat()),
     )
     db.commit()
-    flash(f"Professor {name} cadastrado!", "success")
+    flash(f"Professor {name} cadastrado! Usuário de login: {username}.", "success")
     return redirect(url_for("admin_professores"))
 
 
@@ -1776,12 +1832,33 @@ def admin_editar_professor(teacher_id):
     if not require_admin():
         return redirect(url_for("admin_login"))
     name = request.form.get("name", "").strip()
+    username = request.form.get("username", "").strip().lower()
+    senha = request.form.get("senha", "")
+
     if not name:
         flash("O nome do professor é obrigatório.", "error")
         return redirect(url_for("admin_professores"))
 
     db = get_db()
-    db.execute("UPDATE teachers SET name = ? WHERE id = ?", (name, teacher_id))
+
+    if username:
+        existing = get_teacher_by_username(username)
+        if existing and existing["id"] != teacher_id:
+            flash(f"Já existe um professor com o usuário '{username}'. Escolha outro.", "error")
+            return redirect(url_for("admin_professores"))
+        if senha:
+            db.execute(
+                "UPDATE teachers SET name = ?, username = ?, password_hash = ? WHERE id = ?",
+                (name, username, generate_password_hash(senha), teacher_id),
+            )
+        else:
+            db.execute(
+                "UPDATE teachers SET name = ?, username = ? WHERE id = ?",
+                (name, username, teacher_id),
+            )
+    else:
+        db.execute("UPDATE teachers SET name = ? WHERE id = ?", (name, teacher_id))
+
     db.commit()
     flash("Professor atualizado.", "success")
     return redirect(url_for("admin_professores"))
