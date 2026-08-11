@@ -12,9 +12,15 @@
     <label for="name">Nome do professor</label>
     <input type="text" id="name" name="name" required>
 
+    <label for="username">Usuário de login</label>
+    <input type="text" id="username" name="username" required autocomplete="off" placeholder="ex: joao">
+
+    <label for="senha">Senha</label>
+    <input type="password" id="senha" name="senha" required autocomplete="new-password">
+
     <button type="submit" class="btn btn-primary">Cadastrar</button>
   </form>
-  <p class="muted" style="font-size:0.8rem;margin-top:8px;">Todos os professores cadastrados e ativos aparecem para o aluno escolher no momento do check-in.</p>
+  <p class="muted" style="font-size:0.8rem;margin-top:8px;">Todos os professores cadastrados e ativos aparecem para o aluno escolher no momento do check-in. O usuário e a senha aqui definidos são o login individual desse professor.</p>
 </section>
 
 <section>
@@ -25,10 +31,13 @@
         <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[p.id % (AVATAR_COLORS|length)] }};">{{ p.name[0] }}</div>
         <div class="student-info">
           <strong>{{ p.name }}</strong>
+          {% if p.username %}<span class="muted" style="font-size:0.8rem;">@{{ p.username }}</span>{% else %}<span class="muted" style="font-size:0.8rem;">sem login próprio</span>{% endif %}
           {% if not p.active %}<span class="badge badge-rejected">Inativo</span>{% endif %}
         </div>
-        <form method="post" action="{{ url_for('admin_editar_professor', teacher_id=p.id) }}" style="display:flex;gap:6px;align-items:center;">
-          <input type="text" name="name" value="{{ p.name }}" style="width:160px;">
+        <form method="post" action="{{ url_for('admin_editar_professor', teacher_id=p.id) }}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <input type="text" name="name" value="{{ p.name }}" placeholder="Nome" style="width:130px;">
+          <input type="text" name="username" value="{{ p.username or '' }}" placeholder="Usuário" style="width:110px;">
+          <input type="password" name="senha" placeholder="Nova senha (opcional)" autocomplete="new-password" style="width:150px;">
           <button type="submit" class="btn btn-small" style="background:#262a33;color:var(--text);">Salvar</button>
         </form>
         {% if p.active %}

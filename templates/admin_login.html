@@ -5,10 +5,15 @@
 <section class="auth-box">
   <h1>Login do professor</h1>
   <form method="post">
+    <label for="username">Usuário</label>
+    <input type="text" id="username" name="username" autocomplete="username" autofocus placeholder="Deixe em branco para acesso mestre">
+
     <label for="senha">Senha</label>
-    <input type="password" id="senha" name="senha" required autofocus>
+    <input type="password" id="senha" name="senha" required autocomplete="current-password">
+
     <button type="submit" class="btn btn-primary">Entrar</button>
   </form>
+  <p class="muted" style="font-size:0.8rem;margin-top:8px;">Cada professor entra com seu próprio usuário e senha, cadastrados em "Professores". O acesso mestre (só a senha, sem usuário) continua funcionando para administração geral.</p>
 </section>
 
 {% endblock %}
