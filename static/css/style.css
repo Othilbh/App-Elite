@@ -323,6 +323,9 @@ textarea { resize: vertical; }
 .student-info { flex: 1; display: flex; flex-direction: column; }
 .student-list li.inactive { opacity: 0.5; }
 
+.chamada-check { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); flex-shrink: 0; white-space: nowrap; }
+.chamada-check input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; }
+
 .recent-list li {
   display: flex;
   justify-content: space-between;
