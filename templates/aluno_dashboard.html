@@ -2,7 +2,7 @@
 {% block title %}{{ student.nickname or student.name }}{% endblock %}
 {% block content %}
 
-<section class="profile-header">
+<section class="profile-header compact">
   {% if student.photo %}
     <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.nickname or student.name }}">
   {% else %}
@@ -11,55 +11,52 @@
   <div>
     <p class="muted" style="margin:0 0 2px;font-size:0.85rem;">{{ saudacao }},</p>
     <h1>{{ student.nickname or student.name }}</h1>
-    {% if student.nickname %}<p class="muted">{{ student.name }}</p>{% endif %}
-    {% if student.real_belt %}<p class="muted">🥋 Faixa atual: {{ student.real_belt }}</p>{% endif %}
+    {% if student.real_belt %}<p class="muted" style="margin:0;">🥋 Faixa atual: {{ student.real_belt }}</p>{% endif %}
   </div>
 </section>
 
-{% if avisos %}
+{% if avisos or proximo_exame or proximo_campeonato or proximo_treino %}
 <section class="form-card avisos-card">
-  <h2 style="margin-top:0;">📣 Avisos da equipe</h2>
-  <ul class="avisos-list">
-    {% for a in avisos %}
-      <li>
-        <strong>{{ a.titulo }}</strong>
-        {% if a.descricao %}<p class="muted" style="margin:2px 0 0;">{{ a.descricao }}</p>{% endif %}
-      </li>
-    {% endfor %}
-  </ul>
+  {% if avisos %}
+    <h2>📣 Avisos da equipe</h2>
+    <ul class="avisos-list">
+      {% for a in avisos %}
+        <li>
+          <strong>{{ a.titulo }}</strong>
+          {% if a.descricao %}<p class="muted">{{ a.descricao }}</p>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if proximo_exame or proximo_campeonato or proximo_treino %}
+    <h2 style="{{ 'margin-top:14px;' if avisos }}">Próximos compromissos</h2>
+    {% if proximo_exame %}
+      <div class="evento-row">
+        <span class="evento-icon">🥋</span>
+        <div><strong>{{ proximo_exame.titulo }}</strong><span class="muted">{{ proximo_exame.label }} · {{ proximo_exame.data_evento }}</span></div>
+      </div>
+    {% endif %}
+    {% if proximo_campeonato %}
+      <div class="evento-row">
+        <span class="evento-icon">🏆</span>
+        <div><strong>{{ proximo_campeonato.titulo }}</strong><span class="muted">{{ proximo_campeonato.label }} · {{ proximo_campeonato.data_evento }}</span></div>
+      </div>
+    {% endif %}
+    {% if proximo_treino %}
+      <div class="evento-row">
+        <span class="evento-icon">🕒</span>
+        <div><strong>{{ proximo_treino.titulo }}</strong><span class="muted">{{ proximo_treino.label }} · {{ proximo_treino.data_evento }}</span></div>
+      </div>
+    {% endif %}
+  {% endif %}
 </section>
 {% endif %}
 
-{% if proximo_exame or proximo_campeonato or proximo_treino %}
-<section class="form-card eventos-card">
-  <h2 style="margin-top:0;">Próximos compromissos</h2>
-  {% if proximo_exame %}
-    <div class="evento-row">
-      <span class="evento-icon">🥋</span>
-      <div><strong>{{ proximo_exame.titulo }}</strong><span class="muted">{{ proximo_exame.data_evento }}</span></div>
-    </div>
-  {% endif %}
-  {% if proximo_campeonato %}
-    <div class="evento-row">
-      <span class="evento-icon">🏆</span>
-      <div><strong>{{ proximo_campeonato.titulo }}</strong><span class="muted">{{ proximo_campeonato.data_evento }}</span></div>
-    </div>
-  {% endif %}
-  {% if proximo_treino %}
-    <div class="evento-row">
-      <span class="evento-icon">🕒</span>
-      <div><strong>{{ proximo_treino.titulo }}</strong><span class="muted">{{ proximo_treino.data_evento }}</span></div>
-    </div>
-  {% endif %}
-</section>
-{% endif %}
-
-<section class="belt-block">
-  <p class="muted" style="margin:0 0 8px;font-size:0.75rem;">PROGRESSO POR FREQUÊNCIA (não é a faixa oficial)</p>
+<section class="belt-block compact">
   <div class="belt-row">
     <span class="belt-swatch" style="background:{{ belt.color }};"></span>
     <span class="belt-name">{{ belt.name }}</span>
-    <span class="muted belt-total">{{ total }} treino{{ 's' if total != 1 }} no total</span>
+    <span class="muted belt-total">{{ total }} treino{{ 's' if total != 1 }}</span>
   </div>
   <div class="belt-track">
     <div class="belt-fill" style="width:{{ belt.pct }}%; background:{{ belt.color }};"></div>
@@ -76,22 +73,22 @@
   <a href="{{ url_for('index') }}" class="quick-action-btn">🔁 Trocar aluno</a>
 </div>
 
-<section class="stats-row">
+<section class="stats-row compact">
   <div class="stat-card">
     <span class="stat-number">{{ week }}</span>
-    <span class="stat-label">Esta semana</span>
+    <span class="stat-label">Semana</span>
   </div>
   <div class="stat-card">
     <span class="stat-number">{{ month }}</span>
-    <span class="stat-label">Este mês</span>
+    <span class="stat-label">Mês</span>
   </div>
   <div class="stat-card">
     <span class="stat-number">{{ year }}</span>
-    <span class="stat-label">Este ano</span>
+    <span class="stat-label">Ano</span>
   </div>
 </section>
 
-<section class="checkin-box">
+<section class="checkin-box compact">
   {% if today_checkin %}
     {% if today_checkin.status == 'pending' %}
       <p class="badge badge-pending">⏳ Check-in de hoje com {{ today_checkin.teacher_name or "professor não informado" }}, aguardando confirmação</p>
@@ -101,31 +98,30 @@
       <p class="badge badge-rejected">❌ Check-in de hoje não foi confirmado</p>
     {% endif %}
   {% else %}
-    <p class="muted">Sua presença de hoje ainda não foi marcada. Ela é registrada pelo professor, na chamada da aula.</p>
+    <p class="muted">Presença de hoje ainda não marcada — é feita pelo professor na chamada da aula.</p>
   {% endif %}
+  {% if my_position %}<p class="position-note" style="margin:6px 0 0;">Sua posição no ranking do mês: <strong>#{{ my_position }}</strong></p>{% endif %}
 </section>
 
-{% if my_position %}
-<p class="position-note">Sua posição no ranking do mês: <strong>#{{ my_position }}</strong></p>
-{% endif %}
-
-<section class="mini-ranking">
-  <h2>Ranking do mês</h2>
-  <ol class="ranking-list">
-    {% for r in ranking_month %}
-      <li class="{{ 'me' if r.id == student.id else '' }}">
-        <span class="rank-pos">{{ loop.index }}</span>
-        <span class="rank-name">{{ r.name }}</span>
-        <span class="rank-count">{{ r.count }}</span>
-      </li>
-    {% endfor %}
-  </ol>
-  <a href="{{ url_for('ranking', periodo='month') }}" class="link-more">Ver ranking completo →</a>
-</section>
-
-<section class="pin-settings" style="margin-top:20px;">
+<section class="collapsible-section">
   <details>
-    <summary style="cursor:pointer;color:var(--muted, #9aa4b2);font-size:0.9rem;">🔒 Alterar meu PIN</summary>
+    <summary>🏆 Ver ranking do mês</summary>
+    <ol class="ranking-list" style="margin-top:10px;">
+      {% for r in ranking_month %}
+        <li class="{{ 'me' if r.id == student.id else '' }}">
+          <span class="rank-pos">{{ loop.index }}</span>
+          <span class="rank-name">{{ r.name }}</span>
+          <span class="rank-count">{{ r.count }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+    <a href="{{ url_for('ranking', periodo='month') }}" class="link-more">Ver ranking completo →</a>
+  </details>
+</section>
+
+<section class="collapsible-section">
+  <details>
+    <summary>🔒 Alterar meu PIN</summary>
     <form method="post" action="{{ url_for('alterar_pin', student_id=student.id) }}" style="margin-top:10px;">
       <label for="novo_pin">Novo PIN (4 números)</label>
       <input type="password" id="novo_pin" name="novo_pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required
