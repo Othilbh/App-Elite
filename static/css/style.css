@@ -503,3 +503,21 @@ textarea { resize: vertical; }
   background: var(--bg); border: 1px solid #2a2f3a; border-radius: 8px;
   padding: 6px 8px; color: var(--text); font-size: 0.8rem;
 }
+
+/* Tela inicial do aluno: avisos, próximos eventos e atalhos rápidos */
+.avisos-card, .eventos-card { margin-bottom: 20px; }
+.avisos-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.avisos-list li { border-left: 3px solid var(--accent); padding-left: 10px; }
+
+.evento-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #262a33; }
+.evento-row:last-child { border-bottom: none; }
+.evento-icon { font-size: 1.2rem; }
+.evento-row div { display: flex; flex-direction: column; }
+
+.quick-actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.quick-action-btn {
+  flex: 1; min-width: 130px; text-align: center;
+  background: var(--card); border-radius: var(--radius);
+  padding: 12px 10px; font-size: 0.85rem; font-weight: 600; color: var(--text);
+}
+.quick-action-btn:hover { background: #20242c; }
