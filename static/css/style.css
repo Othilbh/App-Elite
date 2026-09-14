@@ -521,3 +521,42 @@ textarea { resize: vertical; }
   padding: 12px 10px; font-size: 0.85rem; font-weight: 600; color: var(--text);
 }
 .quick-action-btn:hover { background: #20242c; }
+
+
+/* Compact home screen (menos scroll) */
+.profile-header.compact { margin-bottom: 14px; }
+.belt-block.compact { padding: 14px 16px; margin-bottom: 14px; }
+.stats-row.compact { margin-bottom: 14px; }
+.checkin-box.compact { margin-bottom: 10px; }
+
+.avisos-card h2 { font-size: 1rem; margin: 0 0 8px; }
+.avisos-list { padding-left: 0; list-style: none; margin: 0 0 4px; }
+.avisos-list li { padding: 8px 0 8px 10px; border-left: 2px solid var(--accent); margin-bottom: 6px; }
+.avisos-list li:last-child { margin-bottom: 0; }
+.avisos-list li p { margin: 2px 0 0; font-size: 0.85rem; }
+
+.evento-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.evento-row:last-child { border-bottom: none; }
+.evento-icon { font-size: 1.2rem; flex-shrink: 0; }
+.evento-row strong { display: block; font-size: 0.92rem; }
+.evento-row .muted { font-size: 0.8rem; }
+
+.quick-actions { display: flex; gap: 10px; margin-bottom: 14px; }
+.quick-action-btn {
+  flex: 1; text-align: center; padding: 10px 8px; border-radius: var(--radius, 12px);
+  background: var(--card); color: var(--text); text-decoration: none; font-size: 0.88rem; font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.quick-action-btn:active { opacity: 0.8; }
+
+.collapsible-section { margin-bottom: 10px; }
+.collapsible-section details {
+  background: var(--card); border-radius: var(--radius, 12px); padding: 12px 16px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.collapsible-section summary {
+  cursor: pointer; font-weight: 600; font-size: 0.92rem; list-style: none; color: var(--text);
+}
+.collapsible-section summary::-webkit-details-marker { display: none; }
+.collapsible-section summary::after { content: ' ▾'; color: var(--muted); }
+.collapsible-section details[open] summary::after { content: ' ▴'; }
