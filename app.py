@@ -228,6 +228,19 @@ def init_db():
             );
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS eventos (
+                id SERIAL PRIMARY KEY,
+                tipo TEXT NOT NULL,
+                titulo TEXT NOT NULL,
+                descricao TEXT,
+                data_evento TEXT,
+                ativo INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
         # Migração seguindo para bancos criados antes destas colunas existirem.
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin TEXT")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_attempts INTEGER NOT NULL DEFAULT 0")
@@ -333,6 +346,19 @@ def init_db():
             created_at TEXT NOT NULL,
             FOREIGN KEY (student_id) REFERENCES students (id),
             UNIQUE (student_id, ref_month, ref_year)
+        );
+        """
+    )
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS eventos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT NOT NULL,
+            titulo TEXT NOT NULL,
+            descricao TEXT,
+            data_evento TEXT,
+            ativo INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
         );
         """
     )
@@ -486,6 +512,26 @@ def reset_pin_attempts(student_id):
 
 def today_str():
     return date.today().isoformat()
+
+
+def get_proximo_evento(tipo):
+    """Próximo evento com data futura (ou hoje) de um tipo (exame/campeonato/treino)."""
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM eventos WHERE tipo = ? AND ativo = 1 AND data_evento IS NOT NULL "
+        "AND data_evento >= ? ORDER BY data_evento ASC LIMIT 1",
+        (tipo, today_str()),
+    ).fetchone()
+
+
+def get_avisos_recentes(limit=3):
+    """Últimos avisos ativos publicados pelo professor."""
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM eventos WHERE tipo = 'aviso' AND ativo = 1 "
+        "ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
 
 
 def calculate_age(birth_date_str):
@@ -1364,6 +1410,19 @@ def aluno_dashboard(student_id):
 
     professores = get_active_teachers()
 
+    hora = datetime.now().hour
+    if hora < 12:
+        saudacao = "Bom dia"
+    elif hora < 18:
+        saudacao = "Boa tarde"
+    else:
+        saudacao = "Boa noite"
+
+    proximo_exame = get_proximo_evento("exame")
+    proximo_campeonato = get_proximo_evento("campeonato")
+    proximo_treino = get_proximo_evento("treino")
+    avisos = get_avisos_recentes()
+
     return render_template(
         "aluno_dashboard.html",
         student=student,
@@ -1376,6 +1435,11 @@ def aluno_dashboard(student_id):
         ranking_month=ranking_month[:5],
         my_position=my_position,
         professores=professores,
+        saudacao=saudacao,
+        proximo_exame=proximo_exame,
+        proximo_campeonato=proximo_campeonato,
+        proximo_treino=proximo_treino,
+        avisos=avisos,
     )
 
 
@@ -1676,6 +1740,52 @@ def admin_chamada():
         presentes=presentes,
         marcados=len(presentes),
     )
+
+
+@app.route("/admin/eventos", methods=["GET", "POST"])
+def admin_eventos():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    db = get_db()
+
+    if request.method == "POST":
+        tipo = request.form.get("tipo", "aviso")
+        if tipo not in ("aviso", "exame", "campeonato", "treino"):
+            tipo = "aviso"
+        titulo = request.form.get("titulo", "").strip()
+        descricao = request.form.get("descricao", "").strip()
+        data_evento = request.form.get("data_evento", "").strip() or None
+
+        if not titulo:
+            flash("Escreva um título antes de publicar.", "error")
+        else:
+            db.execute(
+                "INSERT INTO eventos (tipo, titulo, descricao, data_evento, ativo, created_at) "
+                "VALUES (?, ?, ?, ?, 1, ?)",
+                (tipo, titulo, descricao or None, data_evento, datetime.now().isoformat()),
+            )
+            db.commit()
+            flash("Publicado para os alunos.", "success")
+        return redirect(url_for("admin_eventos"))
+
+    itens = db.execute(
+        "SELECT * FROM eventos WHERE ativo = 1 ORDER BY "
+        "(CASE WHEN data_evento IS NULL THEN 1 ELSE 0 END), data_evento ASC, created_at DESC"
+    ).fetchall()
+
+    return render_template("admin_eventos.html", itens=itens)
+
+
+@app.route("/admin/eventos/<int:evento_id>/remover", methods=["POST"])
+def admin_remover_evento(evento_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("UPDATE eventos SET ativo = 0 WHERE id = ?", (evento_id,))
+    db.commit()
+    flash("Removido.", "success")
+    return redirect(url_for("admin_eventos"))
 
 
 @app.route("/admin/checkin/<int:checkin_id>/aprovar", methods=["POST"])
