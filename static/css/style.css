@@ -40,6 +40,83 @@ a { color: inherit; text-decoration: none; }
 .topbar nav a { color: var(--muted); }
 .topbar nav a:hover { color: var(--text); }
 
+/* Menu do professor: botão hamburguer (só aparece no mobile) */
+.nav-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 24px;
+  height: 18px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.nav-toggle span { display: block; height: 2px; background: var(--text); border-radius: 2px; }
+
+.nav-teacher-name { font-size: 0.85rem; }
+
+/* Dropdown "Gestão" com os links usados com menos frequência */
+.nav-dropdown { position: relative; }
+.nav-dropdown-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.nav-dropdown-toggle:hover,
+.nav-dropdown.open .nav-dropdown-toggle { color: var(--text); }
+.nav-dropdown-menu {
+  display: none;
+  flex-direction: column;
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 8px;
+  min-width: 170px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+}
+.nav-dropdown.open .nav-dropdown-menu { display: flex; }
+.nav-dropdown-menu a { padding: 8px 10px; border-radius: 8px; font-size: 0.9rem; }
+.nav-dropdown-menu a:hover { background: #20242c; }
+
+@media (max-width: 767px) {
+  .topbar { position: relative; }
+  .nav-toggle { display: flex; }
+  .topbar nav.admin-nav {
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    background: #14161c;
+    border: 1px solid #262a33;
+    border-radius: var(--radius);
+    padding: 12px;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 10px;
+    z-index: 40;
+  }
+  .topbar nav.admin-nav.open { display: flex; }
+  .topbar nav.admin-nav a,
+  .topbar nav.admin-nav .nav-dropdown-toggle,
+  .topbar nav.admin-nav .nav-teacher-name { padding: 8px 4px; }
+  .nav-dropdown-menu {
+    position: static;
+    box-shadow: none;
+    padding: 0 0 0 10px;
+    min-width: 0;
+  }
+}
+
 .container {
   max-width: 640px;
   margin: 0 auto;
