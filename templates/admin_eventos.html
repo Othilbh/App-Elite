@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Avisos e eventos{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Avisos e eventos</h1>
+  <p class="muted">O que você publicar aqui aparece na tela inicial de todos os alunos.</p>
+</section>
+
+<section class="form-card">
+  <h2 style="margin-top:0;">Publicar novo</h2>
+  <form method="post">
+    <label for="tipo">Tipo</label>
+    <select id="tipo" name="tipo" required>
+      <option value="aviso">Aviso geral</option>
+      <option value="exame">Exame de faixa</option>
+      <option value="campeonato">Campeonato</option>
+      <option value="treino">Treino especial</option>
+    </select>
+
+    <label for="titulo">Título</label>
+    <input type="text" id="titulo" name="titulo" required placeholder="Ex: Exame de faixa em outubro">
+
+    <label for="data_evento">Data (obrigatória para exame/campeonato/treino)</label>
+    <input type="date" id="data_evento" name="data_evento">
+
+    <label for="descricao">Descrição (opcional)</label>
+    <textarea id="descricao" name="descricao" rows="3" placeholder="Detalhes, local, horário..."></textarea>
+
+    <button type="submit" class="btn btn-primary">Publicar</button>
+  </form>
+</section>
+
+<section>
+  <h2>Publicados ({{ itens|length }})</h2>
+  {% if itens %}
+    <ul class="student-list">
+      {% for it in itens %}
+        <li style="align-items:flex-start;">
+          <div class="student-info">
+            <strong>
+              {% if it.tipo == 'exame' %}🥋 Exame
+              {% elif it.tipo == 'campeonato' %}🏆 Campeonato
+              {% elif it.tipo == 'treino' %}🕒 Treino
+              {% else %}📣 Aviso
+              {% endif %}
+              — {{ it.titulo }}
+            </strong>
+            {% if it.data_evento %}<span class="muted">{{ it.data_evento }}</span>{% endif %}
+            {% if it.descricao %}<span class="muted">{{ it.descricao }}</span>{% endif %}
+          </div>
+          <form method="post" action="{{ url_for('admin_remover_evento', evento_id=it.id) }}">
+            <button type="submit" class="btn btn-small btn-reject">Remover</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">Nada publicado ainda.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
