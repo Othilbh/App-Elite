@@ -21,17 +21,27 @@
     <img src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="" class="brand-icon">
     Elite Hapkido
   </a>
-  <nav>
+  {% if is_admin %}
+    <button type="button" class="nav-toggle" id="navToggle" aria-label="Abrir menu" aria-expanded="false" aria-controls="mainNav">
+      <span></span><span></span><span></span>
+    </button>
+  {% endif %}
+  <nav id="mainNav" class="{{ 'admin-nav' if is_admin else '' }}">
     <a href="{{ url_for('ranking') }}">Ranking</a>
     {% if is_admin %}
       <a href="{{ url_for('admin_dashboard') }}">Painel</a>
       <a href="{{ url_for('admin_chamada') }}">Chamada</a>
-      <a href="{{ url_for('admin_alunos') }}">Alunos</a>
-      <a href="{{ url_for('admin_professores') }}">Professores</a>
-      <a href="{{ url_for('admin_frequencia') }}">Frequência</a>
-      <a href="{{ url_for('admin_mensalidades') }}">Mensalidades</a>
-      <a href="{{ url_for('admin_campeoes') }}">Campeões</a>
-      {% if logged_teacher %}<span class="muted" style="font-size:0.85rem;">{{ logged_teacher.name }}</span>{% endif %}
+      <div class="nav-dropdown" id="navDropdown">
+        <button type="button" class="nav-dropdown-toggle" id="navDropdownToggle" aria-expanded="false">Gestão ▾</button>
+        <div class="nav-dropdown-menu" id="navDropdownMenu">
+          <a href="{{ url_for('admin_alunos') }}">Alunos</a>
+          <a href="{{ url_for('admin_professores') }}">Professores</a>
+          <a href="{{ url_for('admin_frequencia') }}">Frequência</a>
+          <a href="{{ url_for('admin_mensalidades') }}">Mensalidades</a>
+          <a href="{{ url_for('admin_campeoes') }}">Campeões</a>
+        </div>
+      </div>
+      {% if logged_teacher %}<span class="muted nav-teacher-name">{{ logged_teacher.name }}</span>{% endif %}
       <a href="{{ url_for('admin_logout') }}">Sair</a>
     {% else %}
       <a href="{{ url_for('admin_login') }}">Sou o professor</a>
@@ -63,6 +73,39 @@
       navigator.serviceWorker.register('/sw.js');
     });
   }
+</script>
+<script>
+  (function () {
+    var toggle = document.getElementById('navToggle');
+    var nav = document.getElementById('mainNav');
+    if (toggle && nav) {
+      toggle.addEventListener('click', function () {
+        var isOpen = nav.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+    }
+    var dropdown = document.getElementById('navDropdown');
+    var dropToggle = document.getElementById('navDropdownToggle');
+    if (dropdown && dropToggle) {
+      dropToggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var isOpen = dropdown.classList.toggle('open');
+        dropToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+      document.addEventListener('click', function (e) {
+        if (!dropdown.contains(e.target)) {
+          dropdown.classList.remove('open');
+          dropToggle.setAttribute('aria-expanded', 'false');
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          dropdown.classList.remove('open');
+          dropToggle.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+  })();
 </script>
 </body>
 </html>
