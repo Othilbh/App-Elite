@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Chamada{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Chamada</h1>
+  <p class="muted">Marque quem treinou. A presença já entra confirmada, sem precisar aprovar depois.</p>
+</section>
+
+<section class="form-card" style="padding:14px 16px;">
+  <form method="get" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+    <div>
+      <label for="data">Data da aula</label>
+      <input type="date" id="data" name="data" value="{{ data }}" onchange="this.form.submit()">
+    </div>
+  </form>
+</section>
+
+<form method="post" id="chamada-form">
+  <input type="hidden" name="data" value="{{ data }}">
+  <section>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
+      <h2 style="margin:0;">Alunos ativos ({{ students|length }})</h2>
+      <span class="muted" id="contagem">{{ marcados }} presente{{ 's' if marcados != 1 }}</span>
+    </div>
+    <ul class="student-list">
+      {% for s in students %}
+        <li>
+          {% if s.photo %}
+            <img src="{{ url_for('uploaded_file', filename=s.photo) }}" alt="{{ s.name }}">
+          {% else %}
+            <div class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[s.id % (AVATAR_COLORS|length)] }};">{{ (s.nickname or s.name)[0] }}</div>
+          {% endif %}
+          <div class="student-info">
+            <strong>{{ s.nickname or s.name }}</strong>
+            {% if s.nickname %}<span class="muted">{{ s.name }}</span>{% endif %}
+          </div>
+          <label class="chamada-check">
+            <input type="checkbox" name="student_ids" value="{{ s.id }}" {% if s.id in presentes %}checked{% endif %} onchange="atualizarContagemChamada()">
+            Presente
+          </label>
+        </li>
+      {% else %}
+        <p class="empty-state">Nenhum aluno ativo cadastrado.</p>
+      {% endfor %}
+    </ul>
+  </section>
+  {% if students %}
+    <button type="submit" class="btn btn-primary btn-big" style="margin-top:14px;">Salvar chamada</button>
+  {% endif %}
+</form>
+
+<script>
+  function atualizarContagemChamada() {
+    var boxes = document.querySelectorAll('#chamada-form input[type=checkbox]:checked');
+    var el = document.getElementById('contagem');
+    if (el) { el.textContent = boxes.length + (boxes.length == 1 ? ' presente' : ' presentes'); }
+  }
+</script>
+
+{% endblock %}
