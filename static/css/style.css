@@ -177,7 +177,7 @@ a { color: inherit; text-decoration: none; }
 
 /* Podium com hierarquia (1º mais alto/dourado, 2º prata, 3º bronze) */
 .podium { margin-bottom: 28px; }
-.podium h2 { text-align: center; font-size: 1rem; color: var(--muted); margin-bottom: 18px; }
+.podium h2 { text-align: center; font-size: 1rem; color: var(--muted); margin-bottom: 40px; }
 .podium-row { display: flex; justify-content: center; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
 .podium-item {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -190,7 +190,7 @@ a { color: inherit; text-decoration: none; }
   width: 56px; height: 56px; border-radius: 50%; object-fit: cover;
   border: 3px solid var(--muted);
 }
-.podium-crown { position: absolute; top: -22px; font-size: 1.3rem; }
+.podium-crown { position: absolute; top: -18px; font-size: 1.3rem; }
 .podium-medal { font-size: 1rem; margin-top: 2px; }
 .podium-name { font-weight: 600; font-size: 0.85rem; }
 .podium-count { font-size: 0.75rem; color: var(--muted); }
