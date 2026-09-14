@@ -1381,6 +1381,9 @@ def aluno_dashboard(student_id):
 
 @app.route("/aluno/<int:student_id>/checkin", methods=["POST"])
 def fazer_checkin(student_id):
+    # A partir da chamada feita pelo professor, o aluno não registra mais o
+    # próprio check-in: a presença é marcada direto em /admin/chamada.
+    # Mantemos esta rota (sem gravar nada) só para não quebrar links antigos.
     student = get_student(student_id)
     if not student:
         flash("Aluno não encontrado.", "error")
@@ -1389,38 +1392,7 @@ def fazer_checkin(student_id):
     if not is_student_verified(student_id):
         return redirect(url_for("aluno_entrar", student_id=student_id))
 
-    teacher_id_raw = request.form.get("teacher_id", "").strip()
-    if not teacher_id_raw.isdigit():
-        flash("Selecione qual professor vai te atender antes de registrar o check-in.", "error")
-        return redirect(url_for("aluno_dashboard", student_id=student_id))
-
-    teacher = get_teacher(int(teacher_id_raw))
-    if not teacher or not teacher["active"]:
-        flash("Professor selecionado inválido. Escolha um professor da lista.", "error")
-        return redirect(url_for("aluno_dashboard", student_id=student_id))
-
-    db = get_db()
-    existing = db.execute(
-        "SELECT * FROM checkins WHERE student_id = ? AND workout_date = ?",
-        (student_id, today_str()),
-    ).fetchone()
-    if existing:
-        flash("⚠️ Você já registrou o treino de hoje. Aguarde a confirmação do professor.", "info")
-    else:
-        now = datetime.now()
-        db.execute(
-            "INSERT INTO checkins (student_id, teacher_id, workout_date, status, created_at) "
-            "VALUES (?, ?, ?, 'pending', ?)",
-            (student_id, teacher["id"], today_str(), now.isoformat()),
-        )
-        db.commit()
-        flash(
-            f"✅ Treino registrado com sucesso! Professor: {teacher['name']} • "
-            f"{now.strftime('%H:%M')} • {now.strftime('%d/%m/%Y')}. Assim que o professor "
-            "confirmar, ele conta no ranking.",
-            "success",
-        )
-
+    flash("O check-in agora é feito pelo professor, na chamada da aula.", "info")
     return redirect(url_for("aluno_dashboard", student_id=student_id))
 
 
@@ -1647,6 +1619,62 @@ def admin_dashboard():
         professores_ativos=professores_ativos,
         treinos_mes=treinos_mes,
         using_postgres=USE_POSTGRES,
+    )
+
+
+@app.route("/admin/chamada", methods=["GET", "POST"])
+def admin_chamada():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+
+    db = get_db()
+    data = request.values.get("data") or today_str()
+    try:
+        date.fromisoformat(data)
+    except ValueError:
+        data = today_str()
+
+    students = get_active_students()
+
+    if request.method == "POST":
+        selected_ids = {int(x) for x in request.form.getlist("student_ids")}
+        teacher_id = session.get("teacher_id")
+        now = datetime.now().isoformat()
+
+        existing_rows = db.execute(
+            "SELECT id, student_id FROM checkins WHERE workout_date = ?", (data,)
+        ).fetchall()
+        existing_map = {row["student_id"]: row["id"] for row in existing_rows}
+
+        active_ids = {s["id"] for s in students}
+        marcados = 0
+        for sid in active_ids:
+            if sid in selected_ids:
+                marcados += 1
+                if sid not in existing_map:
+                    db.execute(
+                        "INSERT INTO checkins (student_id, teacher_id, workout_date, status, created_at, reviewed_at) "
+                        "VALUES (?, ?, ?, 'approved', ?, ?)",
+                        (sid, teacher_id, data, now, now),
+                    )
+            elif sid in existing_map:
+                db.execute("DELETE FROM checkins WHERE id = ?", (existing_map[sid],))
+        db.commit()
+
+        flash(f"Chamada de {data} salva: {marcados} aluno(s) presente(s).", "success")
+        return redirect(url_for("admin_chamada", data=data))
+
+    presentes_rows = db.execute(
+        "SELECT student_id FROM checkins WHERE workout_date = ?", (data,)
+    ).fetchall()
+    presentes = {row["student_id"] for row in presentes_rows}
+
+    return render_template(
+        "admin_chamada.html",
+        students=students,
+        data=data,
+        presentes=presentes,
+        marcados=len(presentes),
     )
 
 
