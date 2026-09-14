@@ -9,11 +9,50 @@
     <div class="avatar-placeholder big" style="background:{{ AVATAR_COLORS[student.id % (AVATAR_COLORS|length)] }};">{{ (student.nickname or student.name)[0] }}</div>
   {% endif %}
   <div>
+    <p class="muted" style="margin:0 0 2px;font-size:0.85rem;">{{ saudacao }},</p>
     <h1>{{ student.nickname or student.name }}</h1>
     {% if student.nickname %}<p class="muted">{{ student.name }}</p>{% endif %}
-    {% if student.real_belt %}<p class="muted">🥋 Faixa oficial: {{ student.real_belt }}</p>{% endif %}
+    {% if student.real_belt %}<p class="muted">🥋 Faixa atual: {{ student.real_belt }}</p>{% endif %}
   </div>
 </section>
+
+{% if avisos %}
+<section class="form-card avisos-card">
+  <h2 style="margin-top:0;">📣 Avisos da equipe</h2>
+  <ul class="avisos-list">
+    {% for a in avisos %}
+      <li>
+        <strong>{{ a.titulo }}</strong>
+        {% if a.descricao %}<p class="muted" style="margin:2px 0 0;">{{ a.descricao }}</p>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if proximo_exame or proximo_campeonato or proximo_treino %}
+<section class="form-card eventos-card">
+  <h2 style="margin-top:0;">Próximos compromissos</h2>
+  {% if proximo_exame %}
+    <div class="evento-row">
+      <span class="evento-icon">🥋</span>
+      <div><strong>{{ proximo_exame.titulo }}</strong><span class="muted">{{ proximo_exame.data_evento }}</span></div>
+    </div>
+  {% endif %}
+  {% if proximo_campeonato %}
+    <div class="evento-row">
+      <span class="evento-icon">🏆</span>
+      <div><strong>{{ proximo_campeonato.titulo }}</strong><span class="muted">{{ proximo_campeonato.data_evento }}</span></div>
+    </div>
+  {% endif %}
+  {% if proximo_treino %}
+    <div class="evento-row">
+      <span class="evento-icon">🕒</span>
+      <div><strong>{{ proximo_treino.titulo }}</strong><span class="muted">{{ proximo_treino.data_evento }}</span></div>
+    </div>
+  {% endif %}
+</section>
+{% endif %}
 
 <section class="belt-block">
   <p class="muted" style="margin:0 0 8px;font-size:0.75rem;">PROGRESSO POR FREQUÊNCIA (não é a faixa oficial)</p>
@@ -31,6 +70,11 @@
     <p class="belt-next">Faixa máxima alcançada! 🥋</p>
   {% endif %}
 </section>
+
+<div class="quick-actions">
+  <a href="{{ url_for('ranking') }}" class="quick-action-btn">🏆 Ranking</a>
+  <a href="{{ url_for('index') }}" class="quick-action-btn">🔁 Trocar aluno</a>
+</div>
 
 <section class="stats-row">
   <div class="stat-card">
@@ -78,8 +122,6 @@
   </ol>
   <a href="{{ url_for('ranking', periodo='month') }}" class="link-more">Ver ranking completo →</a>
 </section>
-
-<a href="{{ url_for('index') }}" class="link-back">← Trocar de aluno</a>
 
 <section class="pin-settings" style="margin-top:20px;">
   <details>
