@@ -534,6 +534,27 @@ def get_avisos_recentes(limit=3):
     ).fetchall()
 
 
+def format_evento(row):
+    """Converte um registro de evento numa contagem regressiva amigável
+    (usado na tela inicial do aluno)."""
+    if not row:
+        return None
+    dias = (date.fromisoformat(row["data_evento"]) - date.today()).days
+    if dias == 0:
+        label = "É hoje!"
+    elif dias == 1:
+        label = "Amanhã"
+    else:
+        label = f"Faltam {dias} dias"
+    return {
+        "titulo": row["titulo"],
+        "data_evento": row["data_evento"],
+        "descricao": row["descricao"],
+        "dias": dias,
+        "label": label,
+    }
+
+
 def calculate_age(birth_date_str):
     if not birth_date_str:
         return None
@@ -1418,9 +1439,9 @@ def aluno_dashboard(student_id):
     else:
         saudacao = "Boa noite"
 
-    proximo_exame = get_proximo_evento("exame")
-    proximo_campeonato = get_proximo_evento("campeonato")
-    proximo_treino = get_proximo_evento("treino")
+    proximo_exame = format_evento(get_proximo_evento("exame"))
+    proximo_campeonato = format_evento(get_proximo_evento("campeonato"))
+    proximo_treino = format_evento(get_proximo_evento("treino"))
     avisos = get_avisos_recentes()
 
     return render_template(
