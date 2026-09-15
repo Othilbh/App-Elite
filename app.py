@@ -241,6 +241,68 @@ def init_db():
             );
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS graduacoes (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students (id),
+                faixa TEXT NOT NULL,
+                data TEXT NOT NULL,
+                observacao TEXT,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS exames_alunos (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students (id),
+                data TEXT NOT NULL,
+                faixa_pretendida TEXT,
+                resultado TEXT NOT NULL DEFAULT 'pendente',
+                observacao TEXT,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS campeonatos_participacoes (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students (id),
+                nome_evento TEXT NOT NULL,
+                data TEXT,
+                categoria TEXT,
+                resultado TEXT,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conquistas (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students (id),
+                titulo TEXT NOT NULL,
+                tipo TEXT NOT NULL DEFAULT 'especial',
+                data TEXT,
+                descricao TEXT,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS observacoes_aluno (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students (id),
+                texto TEXT NOT NULL,
+                autor TEXT,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
         # Migração seguindo para bancos criados antes destas colunas existirem.
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin TEXT")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_attempts INTEGER NOT NULL DEFAULT 0")
@@ -359,6 +421,61 @@ def init_db():
             data_evento TEXT,
             ativo INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
+        );
+        """
+    )
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS graduacoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            faixa TEXT NOT NULL,
+            data TEXT NOT NULL,
+            observacao TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (student_id) REFERENCES students (id)
+        );
+
+        CREATE TABLE IF NOT EXISTS exames_alunos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            data TEXT NOT NULL,
+            faixa_pretendida TEXT,
+            resultado TEXT NOT NULL DEFAULT 'pendente',
+            observacao TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (student_id) REFERENCES students (id)
+        );
+
+        CREATE TABLE IF NOT EXISTS campeonatos_participacoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            nome_evento TEXT NOT NULL,
+            data TEXT,
+            categoria TEXT,
+            resultado TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (student_id) REFERENCES students (id)
+        );
+
+        CREATE TABLE IF NOT EXISTS conquistas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            titulo TEXT NOT NULL,
+            tipo TEXT NOT NULL DEFAULT 'especial',
+            data TEXT,
+            descricao TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (student_id) REFERENCES students (id)
+        );
+
+        CREATE TABLE IF NOT EXISTS observacoes_aluno (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            texto TEXT NOT NULL,
+            autor TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (student_id) REFERENCES students (id)
         );
         """
     )
@@ -553,6 +670,106 @@ def format_evento(row):
         "dias": dias,
         "label": label,
     }
+
+
+def get_graduacoes(student_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM graduacoes WHERE student_id = ? ORDER BY data DESC, id DESC",
+        (student_id,),
+    ).fetchall()
+
+
+def get_exames_aluno(student_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM exames_alunos WHERE student_id = ? ORDER BY data DESC, id DESC",
+        (student_id,),
+    ).fetchall()
+
+
+def get_campeonatos_aluno(student_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM campeonatos_participacoes WHERE student_id = ? ORDER BY data DESC, id DESC",
+        (student_id,),
+    ).fetchall()
+
+
+def get_conquistas_aluno(student_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM conquistas WHERE student_id = ? ORDER BY data DESC, id DESC",
+        (student_id,),
+    ).fetchall()
+
+
+def get_observacoes_aluno(student_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM observacoes_aluno WHERE student_id = ? ORDER BY created_at DESC",
+        (student_id,),
+    ).fetchall()
+
+
+def get_tempo_treinamento(student_id, student):
+    """Tempo desde o primeiro check-in aprovado (ou desde o cadastro, se não houver)."""
+    db = get_db()
+    first = db.execute(
+        "SELECT MIN(workout_date) AS d FROM checkins WHERE student_id = ? AND status = 'approved'",
+        (student_id,),
+    ).fetchone()
+    start_str = (first["d"] if first else None) or student["created_at"]
+    if not start_str:
+        return None
+    try:
+        start = date.fromisoformat(start_str[:10])
+    except ValueError:
+        return None
+    days = (date.today() - start).days
+    if days < 0:
+        days = 0
+    years = days // 365
+    months = (days % 365) // 30
+    if years and months:
+        return f"{years} ano{'s' if years != 1 else ''} e {months} {'mês' if months == 1 else 'meses'}"
+    if years:
+        return f"{years} ano{'s' if years != 1 else ''}"
+    if months:
+        return f"{months} {'mês' if months == 1 else 'meses'}"
+    return f"{days} dia{'s' if days != 1 else ''}"
+
+
+def build_timeline(student_id):
+    """Junta graduações, exames, campeonatos e conquistas numa linha do tempo única."""
+    linha = []
+    for g in get_graduacoes(student_id):
+        linha.append({
+            "data": g["data"], "tipo": "graduacao", "icone": "🥋",
+            "titulo": f"Graduado para {g['faixa']}", "detalhe": g["observacao"],
+        })
+    for e in get_exames_aluno(student_id):
+        rotulo = {"aprovado": "Aprovado", "reprovado": "Não aprovado", "pendente": "Pendente"}.get(e["resultado"], e["resultado"])
+        titulo_exame = "Exame de faixa" + (f" — {e['faixa_pretendida']}" if e["faixa_pretendida"] else "")
+        detalhe_exame = rotulo + (f" · {e['observacao']}" if e["observacao"] else "")
+        linha.append({
+            "data": e["data"], "tipo": "exame", "icone": "📋",
+            "titulo": titulo_exame, "detalhe": detalhe_exame,
+        })
+    for c in get_campeonatos_aluno(student_id):
+        detalhe_camp = " · ".join(x for x in [c["categoria"], c["resultado"]] if x)
+        linha.append({
+            "data": c["data"] or "", "tipo": "campeonato", "icone": "🏆",
+            "titulo": c["nome_evento"], "detalhe": detalhe_camp,
+        })
+    for co in get_conquistas_aluno(student_id):
+        icone_co = {"ouro": "🥇", "prata": "🥈", "bronze": "🥉"}.get(co["tipo"], "⭐")
+        linha.append({
+            "data": co["data"] or "", "tipo": "conquista", "icone": icone_co,
+            "titulo": co["titulo"], "detalhe": co["descricao"],
+        })
+    linha.sort(key=lambda x: x["data"] or "", reverse=True)
+    return linha
 
 
 def calculate_age(birth_date_str):
@@ -1464,6 +1681,37 @@ def aluno_dashboard(student_id):
     )
 
 
+@app.route("/aluno/<int:student_id>/perfil")
+def aluno_perfil(student_id):
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("index"))
+
+    if not is_admin() and not is_student_verified(student_id):
+        return redirect(url_for("aluno_entrar", student_id=student_id))
+
+    week, month, year, total = counts_for_student(student_id)
+    belt = belt_info(total)
+    age = calculate_age(student["birth_date"])
+    tempo_treinamento = get_tempo_treinamento(student_id, student)
+
+    timeline = build_timeline(student_id)
+    graduacoes = get_graduacoes(student_id)
+    exames = get_exames_aluno(student_id)
+    campeonatos = get_campeonatos_aluno(student_id)
+    conquistas = get_conquistas_aluno(student_id)
+    observacoes = get_observacoes_aluno(student_id) if is_admin() else []
+
+    return render_template(
+        "aluno_perfil.html",
+        student=student, age=age, week=week, month=month, year=year, total=total,
+        belt=belt, tempo_treinamento=tempo_treinamento, timeline=timeline,
+        graduacoes=graduacoes, exames=exames, campeonatos=campeonatos,
+        conquistas=conquistas, observacoes=observacoes,
+    )
+
+
 @app.route("/aluno/<int:student_id>/checkin", methods=["POST"])
 def fazer_checkin(student_id):
     # A partir da chamada feita pelo professor, o aluno não registra mais o
@@ -2017,7 +2265,212 @@ def admin_editar_aluno(student_id):
         return redirect(url_for("admin_alunos"))
 
     age = calculate_age(student["birth_date"])
-    return render_template("admin_editar_aluno.html", student=student, age=age)
+    return render_template(
+        "admin_editar_aluno.html",
+        student=student,
+        age=age,
+        graduacoes=get_graduacoes(student_id),
+        exames=get_exames_aluno(student_id),
+        campeonatos=get_campeonatos_aluno(student_id),
+        conquistas=get_conquistas_aluno(student_id),
+        observacoes=get_observacoes_aluno(student_id),
+    )
+
+
+@app.route("/admin/alunos/<int:student_id>/graduacoes/nova", methods=["POST"])
+def admin_nova_graduacao(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    faixa = request.form.get("faixa", "").strip()
+    data_g = request.form.get("data", "").strip()
+    observacao = request.form.get("observacao", "").strip()
+    if not faixa or not data_g:
+        flash("Informe a faixa e a data da graduação.", "error")
+        return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO graduacoes (student_id, faixa, data, observacao, created_at) VALUES (?, ?, ?, ?, ?)",
+        (student_id, faixa, data_g, observacao or None, datetime.now().isoformat()),
+    )
+    db.execute("UPDATE students SET real_belt = ? WHERE id = ?", (faixa, student_id))
+    db.commit()
+    flash("Graduação registrada — a faixa oficial do aluno foi atualizada.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/graduacoes/<int:item_id>/remover", methods=["POST"])
+def admin_remover_graduacao(student_id, item_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("DELETE FROM graduacoes WHERE id = ? AND student_id = ?", (item_id, student_id))
+    db.commit()
+    flash("Removido.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/exames/novo", methods=["POST"])
+def admin_novo_exame(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    data_e = request.form.get("data", "").strip()
+    faixa_pretendida = request.form.get("faixa_pretendida", "").strip()
+    resultado = request.form.get("resultado", "pendente").strip()
+    if resultado not in ("aprovado", "reprovado", "pendente"):
+        resultado = "pendente"
+    observacao = request.form.get("observacao", "").strip()
+    if not data_e:
+        flash("Informe a data do exame.", "error")
+        return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO exames_alunos (student_id, data, faixa_pretendida, resultado, observacao, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (student_id, data_e, faixa_pretendida or None, resultado, observacao or None, datetime.now().isoformat()),
+    )
+    db.commit()
+    flash("Exame registrado.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/exames/<int:item_id>/remover", methods=["POST"])
+def admin_remover_exame(student_id, item_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("DELETE FROM exames_alunos WHERE id = ? AND student_id = ?", (item_id, student_id))
+    db.commit()
+    flash("Removido.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/campeonatos/novo", methods=["POST"])
+def admin_novo_campeonato_aluno(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    nome_evento = request.form.get("nome_evento", "").strip()
+    data_c = request.form.get("data", "").strip()
+    categoria = request.form.get("categoria", "").strip()
+    resultado = request.form.get("resultado", "").strip()
+    if not nome_evento:
+        flash("Informe o nome do campeonato.", "error")
+        return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO campeonatos_participacoes (student_id, nome_evento, data, categoria, resultado, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (student_id, nome_evento, data_c or None, categoria or None, resultado or None, datetime.now().isoformat()),
+    )
+    db.commit()
+    flash("Participação registrada.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/campeonatos/<int:item_id>/remover", methods=["POST"])
+def admin_remover_campeonato_aluno(student_id, item_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("DELETE FROM campeonatos_participacoes WHERE id = ? AND student_id = ?", (item_id, student_id))
+    db.commit()
+    flash("Removido.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/conquistas/nova", methods=["POST"])
+def admin_nova_conquista(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    titulo = request.form.get("titulo", "").strip()
+    tipo = request.form.get("tipo", "especial").strip()
+    if tipo not in ("ouro", "prata", "bronze", "especial"):
+        tipo = "especial"
+    data_co = request.form.get("data", "").strip()
+    descricao = request.form.get("descricao", "").strip()
+    if not titulo:
+        flash("Informe o título da conquista.", "error")
+        return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO conquistas (student_id, titulo, tipo, data, descricao, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (student_id, titulo, tipo, data_co or None, descricao or None, datetime.now().isoformat()),
+    )
+    db.commit()
+    flash("Conquista adicionada.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/conquistas/<int:item_id>/remover", methods=["POST"])
+def admin_remover_conquista(student_id, item_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("DELETE FROM conquistas WHERE id = ? AND student_id = ?", (item_id, student_id))
+    db.commit()
+    flash("Removido.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/observacoes/nova", methods=["POST"])
+def admin_nova_observacao(student_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    student = get_student(student_id)
+    if not student:
+        flash("Aluno não encontrado.", "error")
+        return redirect(url_for("admin_alunos"))
+
+    texto = request.form.get("texto", "").strip()
+    if not texto:
+        flash("Escreva algo antes de salvar a observação.", "error")
+        return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+    t = logged_teacher()
+    autor = t["name"] if t else None
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO observacoes_aluno (student_id, texto, autor, created_at) VALUES (?, ?, ?, ?)",
+        (student_id, texto, autor, datetime.now().isoformat()),
+    )
+    db.commit()
+    flash("Observação salva.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
+
+
+@app.route("/admin/alunos/<int:student_id>/observacoes/<int:item_id>/remover", methods=["POST"])
+def admin_remover_observacao(student_id, item_id):
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("DELETE FROM observacoes_aluno WHERE id = ? AND student_id = ?", (item_id, student_id))
+    db.commit()
+    flash("Removido.", "success")
+    return redirect(url_for("admin_editar_aluno", student_id=student_id))
 
 
 @app.route("/admin/alunos/novo", methods=["POST"])
