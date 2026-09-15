@@ -560,3 +560,41 @@ textarea { resize: vertical; }
 .collapsible-section summary::-webkit-details-marker { display: none; }
 .collapsible-section summary::after { content: ' ▾'; color: var(--muted); }
 .collapsible-section details[open] summary::after { content: ' ▴'; }
+
+
+/* Perfil do atleta — stats + timeline */
+.perfil-stats-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;
+}
+.perfil-stat-card {
+  background: var(--card); border-radius: var(--radius, 12px); padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 4px;
+}
+.perfil-stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.perfil-stat-value { font-size: 1.02rem; font-weight: 700; }
+
+.timeline-section { margin: 18px 0 14px; }
+.timeline-section h2 { font-size: 1.05rem; margin-bottom: 12px; }
+
+.timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.timeline::before {
+  content: ''; position: absolute; left: 15px; top: 6px; bottom: 6px; width: 2px;
+  background: rgba(255,255,255,0.10);
+}
+.timeline-item { position: relative; display: flex; gap: 14px; padding-bottom: 18px; }
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-dot {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--card); border: 1px solid rgba(255,255,255,0.12);
+  display: flex; align-items: center; justify-content: center; font-size: 0.95rem;
+  position: relative; z-index: 1;
+}
+.timeline-item.timeline-graduacao .timeline-dot { border-color: var(--accent); }
+.timeline-content { flex: 1; padding-top: 3px; }
+.timeline-content strong { display: block; font-size: 0.92rem; }
+.timeline-content p { margin: 2px 0 0; font-size: 0.84rem; }
+.timeline-date { display: inline-block; margin-top: 4px; font-size: 0.75rem; color: var(--muted); }
+
+.obs-list { list-style: none; margin: 0; padding: 0; }
+.obs-list li { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.obs-list li:last-child { border-bottom: none; }
