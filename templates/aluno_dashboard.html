@@ -69,6 +69,7 @@
 </section>
 
 <div class="quick-actions">
+  <a href="{{ url_for('aluno_perfil', student_id=student.id) }}" class="quick-action-btn">👤 Meu perfil</a>
   <a href="{{ url_for('ranking') }}" class="quick-action-btn">🏆 Ranking</a>
   <a href="{{ url_for('index') }}" class="quick-action-btn">🔁 Trocar aluno</a>
 </div>
