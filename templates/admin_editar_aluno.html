@@ -6,6 +6,7 @@
   <h1>Ficha do aluno</h1>
   <p>{{ student.nickname or student.name }}{% if age %} · {{ age }} anos{% endif %}</p>
   <a href="{{ url_for('admin_perfil_financeiro', student_id=student.id) }}" class="btn btn-small" style="text-decoration:none;">💰 Ver perfil financeiro completo</a>
+  <a href="{{ url_for('aluno_perfil', student_id=student.id) }}" class="btn btn-small" style="text-decoration:none;">🥋 Ver perfil e linha do tempo</a>
 </section>
 
 <section class="form-card">
@@ -70,6 +71,170 @@
 
     <button type="submit" class="btn btn-primary">Salvar ficha</button>
   </form>
+</section>
+
+<section class="form-card">
+  <h2 style="margin-top:0;">🥋 Graduações</h2>
+  <form method="post" action="{{ url_for('admin_nova_graduacao', student_id=student.id) }}">
+    <label for="faixa">Nova faixa</label>
+    <input type="text" id="faixa" name="faixa" required placeholder="ex: Faixa Azul">
+    <label for="data_graduacao">Data</label>
+    <input type="date" id="data_graduacao" name="data" required>
+    <label for="obs_graduacao">Observação (opcional)</label>
+    <input type="text" id="obs_graduacao" name="observacao" placeholder="ex: exame em Belo Horizonte">
+    <button type="submit" class="btn btn-small btn-primary">Registrar graduação</button>
+  </form>
+  {% if graduacoes %}
+    <ul class="student-list" style="margin-top:12px;">
+      {% for g in graduacoes %}
+        <li>
+          <div class="student-info">
+            <strong>{{ g.faixa }}</strong>
+            <span class="muted">{{ g.data }}{% if g.observacao %} · {{ g.observacao }}{% endif %}</span>
+          </div>
+          <form method="post" action="{{ url_for('admin_remover_graduacao', student_id=student.id, item_id=g.id) }}">
+            <button type="submit" class="btn btn-small btn-reject">Remover</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">Nenhuma graduação registrada ainda.</p>
+  {% endif %}
+</section>
+
+<section class="form-card">
+  <h2 style="margin-top:0;">📋 Exames de faixa</h2>
+  <form method="post" action="{{ url_for('admin_novo_exame', student_id=student.id) }}">
+    <label for="data_exame">Data do exame</label>
+    <input type="date" id="data_exame" name="data" required>
+    <label for="faixa_pretendida">Faixa pretendida</label>
+    <input type="text" id="faixa_pretendida" name="faixa_pretendida" placeholder="ex: Faixa Verde">
+    <label for="resultado_exame">Resultado</label>
+    <select id="resultado_exame" name="resultado">
+      <option value="pendente">Pendente</option>
+      <option value="aprovado">Aprovado</option>
+      <option value="reprovado">Não aprovado</option>
+    </select>
+    <label for="obs_exame">Observação (opcional)</label>
+    <input type="text" id="obs_exame" name="observacao">
+    <button type="submit" class="btn btn-small btn-primary">Registrar exame</button>
+  </form>
+  {% if exames %}
+    <ul class="student-list" style="margin-top:12px;">
+      {% for e in exames %}
+        <li>
+          <div class="student-info">
+            <strong>{{ e.faixa_pretendida or "Exame" }}</strong>
+            <span class="muted">{{ e.data }} ·
+              {% if e.resultado == 'aprovado' %}✅ Aprovado{% elif e.resultado == 'reprovado' %}❌ Não aprovado{% else %}⏳ Pendente{% endif %}
+              {% if e.observacao %} · {{ e.observacao }}{% endif %}
+            </span>
+          </div>
+          <form method="post" action="{{ url_for('admin_remover_exame', student_id=student.id, item_id=e.id) }}">
+            <button type="submit" class="btn btn-small btn-reject">Remover</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">Nenhum exame registrado ainda.</p>
+  {% endif %}
+</section>
+
+<section class="form-card">
+  <h2 style="margin-top:0;">🏆 Campeonatos</h2>
+  <form method="post" action="{{ url_for('admin_novo_campeonato_aluno', student_id=student.id) }}">
+    <label for="nome_evento">Nome do campeonato</label>
+    <input type="text" id="nome_evento" name="nome_evento" required placeholder="ex: Campeonato Brasileiro">
+    <label for="data_campeonato">Data</label>
+    <input type="date" id="data_campeonato" name="data">
+    <label for="categoria_campeonato">Categoria</label>
+    <input type="text" id="categoria_campeonato" name="categoria" placeholder="ex: Adulto -70kg">
+    <label for="resultado_campeonato">Resultado</label>
+    <input type="text" id="resultado_campeonato" name="resultado" placeholder="ex: Campeão, 2º lugar, Participou">
+    <button type="submit" class="btn btn-small btn-primary">Registrar participação</button>
+  </form>
+  {% if campeonatos %}
+    <ul class="student-list" style="margin-top:12px;">
+      {% for c in campeonatos %}
+        <li>
+          <div class="student-info">
+            <strong>{{ c.nome_evento }}</strong>
+            <span class="muted">{{ c.data or "" }}{% if c.categoria %} · {{ c.categoria }}{% endif %}{% if c.resultado %} · {{ c.resultado }}{% endif %}</span>
+          </div>
+          <form method="post" action="{{ url_for('admin_remover_campeonato_aluno', student_id=student.id, item_id=c.id) }}">
+            <button type="submit" class="btn btn-small btn-reject">Remover</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">Nenhuma participação registrada ainda.</p>
+  {% endif %}
+</section>
+
+<section class="form-card">
+  <h2 style="margin-top:0;">⭐ Medalhas e conquistas</h2>
+  <form method="post" action="{{ url_for('admin_nova_conquista', student_id=student.id) }}">
+    <label for="titulo_conquista">Título</label>
+    <input type="text" id="titulo_conquista" name="titulo" required placeholder="ex: Medalha de ouro — Brasileiro 2026">
+    <label for="tipo_conquista">Tipo</label>
+    <select id="tipo_conquista" name="tipo">
+      <option value="ouro">🥇 Ouro</option>
+      <option value="prata">🥈 Prata</option>
+      <option value="bronze">🥉 Bronze</option>
+      <option value="especial">⭐ Especial</option>
+    </select>
+    <label for="data_conquista">Data (opcional)</label>
+    <input type="date" id="data_conquista" name="data">
+    <label for="descricao_conquista">Descrição (opcional)</label>
+    <input type="text" id="descricao_conquista" name="descricao">
+    <button type="submit" class="btn btn-small btn-primary">Adicionar conquista</button>
+  </form>
+  {% if conquistas %}
+    <ul class="student-list" style="margin-top:12px;">
+      {% for co in conquistas %}
+        <li>
+          <div class="student-info">
+            <strong>{{ co.titulo }}</strong>
+            <span class="muted">{{ co.data or "" }}{% if co.descricao %} · {{ co.descricao }}{% endif %}</span>
+          </div>
+          <form method="post" action="{{ url_for('admin_remover_conquista', student_id=student.id, item_id=co.id) }}">
+            <button type="submit" class="btn btn-small btn-reject">Remover</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">Nenhuma conquista registrada ainda.</p>
+  {% endif %}
+</section>
+
+<section class="form-card">
+  <h2 style="margin-top:0;">📝 Observações do professor</h2>
+  <form method="post" action="{{ url_for('admin_nova_observacao', student_id=student.id) }}">
+    <label for="texto_observacao">Nova observação</label>
+    <textarea id="texto_observacao" name="texto" rows="3" required placeholder="Visível só para professores/admin"></textarea>
+    <button type="submit" class="btn btn-small btn-primary">Salvar observação</button>
+  </form>
+  {% if observacoes %}
+    <ul class="student-list" style="margin-top:12px;align-items:flex-start;">
+      {% for o in observacoes %}
+        <li style="align-items:flex-start;">
+          <div class="student-info">
+            <span>{{ o.texto }}</span>
+            <span class="muted">{{ o.created_at[:10] }}{% if o.autor %} · {{ o.autor }}{% endif %}</span>
+          </div>
+          <form method="post" action="{{ url_for('admin_remover_observacao', student_id=student.id, item_id=o.id) }}">
+            <button type="submit" class="btn btn-small btn-reject">Remover</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">Nenhuma observação registrada ainda.</p>
+  {% endif %}
 </section>
 
 <a href="{{ url_for('admin_alunos') }}" class="link-back">← Voltar para Alunos</a>
