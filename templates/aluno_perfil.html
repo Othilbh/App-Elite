@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Perfil — {{ student.nickname or student.name }}{% endblock %}
+{% block content %}
+
+<section class="profile-header compact">
+  {% if student.photo %}
+    <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.nickname or student.name }}">
+  {% else %}
+    <div class="avatar-placeholder big" style="background:{{ AVATAR_COLORS[student.id % (AVATAR_COLORS|length)] }};">{{ (student.nickname or student.name)[0] }}</div>
+  {% endif %}
+  <div>
+    <h1>{{ student.nickname or student.name }}</h1>
+    {% if student.nickname %}<p class="muted" style="margin:0;">{{ student.name }}</p>{% endif %}
+    {% if age %}<p class="muted" style="margin:2px 0 0;">{{ age }} anos</p>{% endif %}
+  </div>
+</section>
+
+<section class="perfil-stats-grid">
+  <div class="perfil-stat-card">
+    <span class="perfil-stat-label">Faixa atual</span>
+    <span class="perfil-stat-value">🥋 {{ student.real_belt or "Não informada" }}</span>
+  </div>
+  <div class="perfil-stat-card">
+    <span class="perfil-stat-label">Tempo de treino</span>
+    <span class="perfil-stat-value">{{ tempo_treinamento or "—" }}</span>
+  </div>
+</section>
+
+<section class="belt-block compact">
+  <p class="muted" style="margin:0 0 8px;font-size:0.75rem;">PROGRESSO POR FREQUÊNCIA (não é a faixa oficial)</p>
+  <div class="belt-row">
+    <span class="belt-swatch" style="background:{{ belt.color }};"></span>
+    <span class="belt-name">{{ belt.name }}</span>
+    <span class="muted belt-total">{{ total }} treino{{ 's' if total != 1 }} no total</span>
+  </div>
+  <div class="belt-track">
+    <div class="belt-fill" style="width:{{ belt.pct }}%; background:{{ belt.color }};"></div>
+  </div>
+  {% if belt.next_name %}
+    <p class="belt-next">Faltam {{ belt.remaining }} treino{{ 's' if belt.remaining != 1 }} para a {{ belt.next_name }}</p>
+  {% else %}
+    <p class="belt-next">Nível máximo de frequência alcançado! 🥋</p>
+  {% endif %}
+</section>
+
+<section class="stats-row compact">
+  <div class="stat-card">
+    <span class="stat-number">{{ week }}</span>
+    <span class="stat-label">Semana</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ month }}</span>
+    <span class="stat-label">Mês</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-number">{{ year }}</span>
+    <span class="stat-label">Ano</span>
+  </div>
+</section>
+
+<section class="timeline-section">
+  <h2>Linha do tempo</h2>
+  {% if timeline %}
+    <ol class="timeline">
+      {% for ev in timeline %}
+        <li class="timeline-item timeline-{{ ev.tipo }}">
+          <span class="timeline-dot">{{ ev.icone }}</span>
+          <div class="timeline-content">
+            <strong>{{ ev.titulo }}</strong>
+            {% if ev.detalhe %}<p class="muted">{{ ev.detalhe }}</p>{% endif %}
+            {% if ev.data %}<span class="timeline-date">{{ ev.data }}</span>{% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p class="empty-state">Ainda não há graduações, exames, campeonatos ou conquistas registrados.</p>
+  {% endif %}
+</section>
+
+{% if is_admin %}
+<section class="collapsible-section">
+  <details>
+    <summary>📝 Observações do professor ({{ observacoes|length }})</summary>
+    {% if observacoes %}
+      <ul class="obs-list" style="margin-top:10px;">
+        {% for o in observacoes %}
+          <li>
+            <p style="margin:0;">{{ o.texto }}</p>
+            <span class="muted" style="font-size:0.78rem;">{{ o.created_at[:10] }}{% if o.autor %} · {{ o.autor }}{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted" style="margin-top:8px;">Nenhuma observação registrada ainda.</p>
+    {% endif %}
+    <a href="{{ url_for('admin_editar_aluno', student_id=student.id) }}" class="link-more">Adicionar na ficha do aluno →</a>
+  </details>
+</section>
+{% endif %}
+
+<a href="{{ url_for('aluno_dashboard', student_id=student.id) if not is_admin else url_for('admin_alunos') }}" class="link-back">← Voltar</a>
+
+{% endblock %}
