@@ -67,6 +67,7 @@
           {% endif %}
           {% if not s.active %}<span class="badge badge-rejected">Inativo</span>{% endif %}
         </div>
+        <a href="{{ url_for('aluno_perfil', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">🥋 Perfil</a>
         <a href="{{ url_for('admin_aluno_frequencia', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">📊 Frequência</a>
         <a href="{{ url_for('admin_perfil_financeiro', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">💰 Financeiro</a>
         <a href="{{ url_for('admin_editar_aluno', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Ficha completa</a>
