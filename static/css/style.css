@@ -598,3 +598,28 @@ textarea { resize: vertical; }
 .obs-list { list-style: none; margin: 0; padding: 0; }
 .obs-list li { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
 .obs-list li:last-child { border-bottom: none; }
+
+/* Ranking Trimestral / Anual */
+.tabs-main a { font-size: 0.95rem; font-weight: 600; padding: 10px 18px; }
+.tabs-sub { margin-top: -6px; }
+.tabs-sub a { padding: 5px 12px; font-size: 0.78rem; }
+.period-card {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px;
+  background: var(--card); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px;
+}
+.period-card strong { display: block; }
+.period-card .muted, .period-reset { font-size: 0.82rem; }
+.ranking-list li.top-1 { background: linear-gradient(90deg, rgba(212, 175, 55, 0.28), rgba(212, 175, 55, 0.06)); }
+.ranking-list li.top-1 .rank-name { font-weight: 700; }
+.ranking-list li.top-2 { background: linear-gradient(90deg, rgba(199, 202, 209, 0.18), rgba(199, 202, 209, 0.03)); }
+.ranking-list li.top-3 { background: linear-gradient(90deg, rgba(185, 121, 63, 0.2), rgba(185, 121, 63, 0.03)); }
+.ranking-list li.top-1 .rank-pos, .ranking-list li.top-2 .rank-pos, .ranking-list li.top-3 .rank-pos { font-size: 1.2rem; }
+.history-list { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 10px; }
+.history-list a {
+  display: block; background: var(--card); border-radius: var(--radius); padding: 14px;
+  border-left: 3px solid var(--accent);
+}
+.history-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; }
+.history-head .muted { font-size: 0.82rem; }
+.history-winner { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.history-link { display: block; margin-top: 8px; font-size: 0.8rem; color: var(--accent); }

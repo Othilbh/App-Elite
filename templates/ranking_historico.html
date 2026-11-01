@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Histórico de rankings{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>Histórico de rankings</h1>
+  <p class="muted">Resultados preservados de cada período encerrado.</p>
+</section>
+
+<div class="tabs tabs-main">
+  <a href="{{ url_for('ranking_historico', tipo='trimestral') }}" class="{{ 'active' if tipo == 'trimestral' }}">📅 Trimestres</a>
+  <a href="{{ url_for('ranking_historico', tipo='anual') }}" class="{{ 'active' if tipo == 'anual' }}">🏆 Anos</a>
+</div>
+
+{% if encerrados %}
+  <ul class="history-list">
+    {% for item in encerrados %}
+      {% set p = item.periodo %}
+      <li>
+        <a href="{{ url_for('ranking_historico_periodo', tipo=tipo, chave=p.chave) }}">
+          <div class="history-head">
+            <strong>{{ p.label }}</strong>
+            <span class="muted">{{ p.meses }}</span>
+          </div>
+          <div class="history-winner">
+            {% if item.vencedores %}
+              🥇 {% for v in item.vencedores %}{{ v.name }}{{ ' e ' if not loop.last }}{% endfor %}
+              <span class="rank-count">{{ item.vencedores[0].count }} pts</span>
+            {% else %}
+              <span class="muted">Sem presenças registradas</span>
+            {% endif %}
+          </div>
+          <span class="history-link">Ver classificação completa →</span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="empty-state">
+    Nenhum {{ 'trimestre' if tipo == 'trimestral' else 'ano' }} encerrado ainda.
+    O {{ atual.label }} ({{ atual.meses }}) está em andamento.
+  </p>
+{% endif %}
+
+<a href="{{ url_for('ranking', periodo=tipo) }}" class="link-back">← Voltar ao ranking atual</a>
+
+{% endblock %}

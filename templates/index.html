@@ -29,7 +29,7 @@
 
 {% if top3 and top3|length > 0 %}
 <section class="podium">
-  <h2>🏆 Top 3 do ano</h2>
+  <h2>🏆 Top 3 do {{ ano_periodo.label }} <span class="muted" style="font-size:0.8rem;">({{ ano_periodo.meses }})</span></h2>
   {% if top3|length == 3 %}
     {% set podium_order = [(top3[1], 2), (top3[0], 1), (top3[2], 3)] %}
   {% else %}

@@ -6,28 +6,60 @@
   <h1>Ranking de treinos</h1>
 </section>
 
-{% if champion %}
+<div class="tabs tabs-main">
+  <a href="{{ url_for('ranking', periodo='trimestral') }}" class="{{ 'active' if period == 'trimestral' }}">📅 Ranking Trimestral</a>
+  <a href="{{ url_for('ranking', periodo='anual') }}" class="{{ 'active' if period == 'anual' }}">🏆 Ranking Anual</a>
+</div>
+<div class="tabs tabs-sub">
+  <a href="{{ url_for('ranking', periodo='week') }}" class="{{ 'active' if period == 'week' }}">Semana</a>
+  <a href="{{ url_for('ranking', periodo='month') }}" class="{{ 'active' if period == 'month' }}">Mês</a>
+  <a href="{{ url_for('ranking', periodo='all') }}" class="{{ 'active' if period == 'all' }}">Geral</a>
+</div>
+
+{% if periodo %}
+  <section class="period-card">
+    <div>
+      <strong>{{ periodo.label }}</strong>
+      <span class="muted">{{ periodo.meses }}</span>
+    </div>
+    <span class="period-reset muted">
+      {% if period == 'trimestral' %}Novo trimestre começa em{% else %}Novo ano começa em{% endif %}
+      {{ periodo.fim.strftime('%d/%m/%Y') }}
+    </span>
+  </section>
+
+  {% if anterior %}
+    <section class="champion-banner">
+      <span class="trophy">🏅</span>
+      <div>
+        <strong>Ganhador{{ 'es' if vencedores_anteriores|length > 1 }} do {{ 'trimestre' if period == 'trimestral' else 'ano' }} anterior</strong>
+        <span class="muted">({{ anterior.label }} · {{ anterior.meses }})</span><br>
+        {% if vencedores_anteriores %}
+          {% for v in vencedores_anteriores %}{{ v.name }}{{ ' e ' if not loop.last }}{% endfor %}
+          — {{ vencedores_anteriores[0].count }} presença{{ 's' if vencedores_anteriores[0].count != 1 }}
+        {% else %}
+          <span class="muted">Sem presenças registradas nesse período.</span>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+{% endif %}
+
+{% if champion and period == 'anual' %}
 <section class="champion-banner">
   <span class="trophy">🏆</span>
   <div>
-    <strong>Campeão {{ champion.year }}:</strong> {{ champion.nickname or champion.name }}
+    <strong>Hall da Fama {{ champion.year }}/{{ (champion.year + 1) % 100 }}:</strong> {{ champion.nickname or champion.name }}
     ({{ champion.total_checkins }} treinos)
   </div>
 </section>
 {% endif %}
 
-<div class="tabs">
-  <a href="{{ url_for('ranking', periodo='week') }}" class="{{ 'active' if period == 'week' }}">Semana</a>
-  <a href="{{ url_for('ranking', periodo='month') }}" class="{{ 'active' if period == 'month' }}">Mês</a>
-  <a href="{{ url_for('ranking', periodo='year') }}" class="{{ 'active' if period == 'year' }}">Ano</a>
-  <a href="{{ url_for('ranking', periodo='all') }}" class="{{ 'active' if period == 'all' }}">Geral</a>
-</div>
-
 <ol class="ranking-list full">
   {% for r in ranking %}
-    <li>
+    <li class="{{ 'top-' ~ r.pos if r.pos <= 3 and r.count > 0 }}">
       <span class="rank-pos">
-        {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+        {% if r.count > 0 and r.pos == 1 %}🥇{% elif r.count > 0 and r.pos == 2 %}🥈{% elif r.count > 0 and r.pos == 3 %}🥉{% else %}{{ r.pos }}{% endif %}
       </span>
       {% if r.photo %}
         <img class="rank-avatar" src="{{ url_for('uploaded_file', filename=r.photo) }}" alt="{{ r.name }}">
@@ -35,13 +67,16 @@
         <span class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[r.id % (AVATAR_COLORS|length)] }};">{{ r.name[0] }}</span>
       {% endif %}
       <span class="rank-name">{{ r.name }}</span>
-      <span class="rank-count">{{ r.count }} treino{{ 's' if r.count != 1 }}</span>
+      <span class="rank-count">{{ r.count }} {{ 'ponto' if periodo else 'treino' }}{{ 's' if r.count != 1 }}</span>
     </li>
   {% else %}
-    <p class="empty-state">Ainda não há check-ins confirmados neste período.</p>
+    <p class="empty-state">Ainda não há presenças confirmadas neste período.</p>
   {% endfor %}
 </ol>
 
+{% if periodo %}
+  <a href="{{ url_for('ranking_historico', tipo=period) }}" class="link-more">📜 Ver histórico de {{ 'trimestres' if period == 'trimestral' else 'anos' }} encerrados →</a><br>
+{% endif %}
 <a href="{{ url_for('index') }}" class="link-back">← Voltar</a>
 {% if is_admin %}
   <a href="{{ url_for('exportar_ranking', periodo=period) }}" class="link-more" style="margin-left:16px;">⬇️ Exportar Excel</a>

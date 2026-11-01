@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ periodo.label }}{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>{{ periodo.label }}</h1>
+  <p class="muted">{{ periodo.meses }}{% if em_andamento %} · em andamento{% else %} · encerrado{% endif %}</p>
+</section>
+
+<ol class="ranking-list full">
+  {% for r in ranking %}
+    <li class="{{ 'top-' ~ r.pos if r.pos <= 3 and r.count > 0 }}">
+      <span class="rank-pos">
+        {% if r.count > 0 and r.pos == 1 %}🥇{% elif r.count > 0 and r.pos == 2 %}🥈{% elif r.count > 0 and r.pos == 3 %}🥉{% else %}{{ r.pos }}{% endif %}
+      </span>
+      {% if r.photo %}
+        <img class="rank-avatar" src="{{ url_for('uploaded_file', filename=r.photo) }}" alt="{{ r.name }}">
+      {% else %}
+        <span class="avatar-placeholder small" style="background:{{ AVATAR_COLORS[r.id % (AVATAR_COLORS|length)] }};">{{ r.name[0] }}</span>
+      {% endif %}
+      <span class="rank-name">{{ r.name }}</span>
+      <span class="rank-count">{{ r.count }} ponto{{ 's' if r.count != 1 }}</span>
+    </li>
+  {% else %}
+    <p class="empty-state">Nenhuma presença confirmada neste período.</p>
+  {% endfor %}
+</ol>
+
+<a href="{{ url_for('ranking_historico', tipo=tipo) }}" class="link-back">← Voltar ao histórico</a>
+{% if is_admin %}
+  <a href="{{ url_for('exportar_ranking', periodo=tipo, chave=periodo.chave) }}" class="link-more" style="margin-left:16px;">⬇️ Exportar Excel</a>
+{% endif %}
+
+{% endblock %}

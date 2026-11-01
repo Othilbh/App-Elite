@@ -1376,6 +1376,7 @@ def counts_for_student(student_id):
     ).fetchall()
     today = date.today()
     cur_iso_year, cur_week, _ = today.isocalendar()
+    ano_atual = periodo_anual(today)  # "ano" = ano de apuração (ago–jul)
     week = month = year = 0
     for r in rows:
         d = date.fromisoformat(r["workout_date"])
@@ -1384,7 +1385,7 @@ def counts_for_student(student_id):
             week += 1
         if d.year == today.year and d.month == today.month:
             month += 1
-        if d.year == today.year:
+        if ano_atual["inicio"] <= d < ano_atual["fim"]:
             year += 1
     return week, month, year, len(rows)
 
@@ -1489,6 +1490,171 @@ def build_ranking(period):
     return ranking
 
 
+# --------------------------------------------------------------------------
+# Ranking Trimestral e Ranking Anual
+#
+# Os dois rankings são CALCULADOS a partir das chamadas (tabela checkins,
+# status 'approved'). Não existe tabela de pontos: cada presença registrada
+# pelo professor vale 1 ponto e alimenta automaticamente o trimestre e o ano
+# em que a data do treino cai. Por isso:
+#   - nenhuma chamada é alterada ou apagada;
+#   - o "reinício" de cada trimestre/ano acontece sozinho, pela data;
+#   - o histórico de períodos encerrados sai das mesmas chamadas, sem
+#     divergência possível entre chamada e classificação;
+#   - a mesma presença nunca conta duas vezes: contamos DIAS distintos de
+#     treino por aluno (COUNT DISTINCT workout_date).
+#
+# Ciclo de apuração começa em AGOSTO (início do app):
+#   1º trimestre: ago, set, out      3º trimestre: fev, mar, abr
+#   2º trimestre: nov, dez, jan      4º trimestre: mai, jun, jul
+#   Ano de apuração: agosto a julho.
+# --------------------------------------------------------------------------
+CICLO_MES_INICIO = 8
+INICIO_RANKINGS = date(2026, 8, 1)  # primeiro ciclo de apuração do app
+
+MESES_ABREV = ["", "jan", "fev", "mar", "abr", "mai", "jun",
+               "jul", "ago", "set", "out", "nov", "dez"]
+
+
+def _somar_meses(d, n):
+    m, y = add_months(d.month, d.year, n)
+    return date(y, m, 1)
+
+
+def ciclo_ano_inicio(d):
+    """Ano em que começa o ciclo (ago–jul) que contém a data d."""
+    return d.year if d.month >= CICLO_MES_INICIO else d.year - 1
+
+
+def periodo_anual(d):
+    ano = ciclo_ano_inicio(d)
+    inicio = date(ano, CICLO_MES_INICIO, 1)
+    fim = _somar_meses(inicio, 12)  # exclusivo
+    return {
+        "tipo": "anual",
+        "chave": str(ano),
+        "ciclo": ano,
+        "inicio": inicio,
+        "fim": fim,
+        "titulo": f"Ano {ano}/{str(ano + 1)[-2:]}",
+        "label": f"Ano {ano}/{str(ano + 1)[-2:]}",
+        "meses": f"ago/{ano} a jul/{ano + 1}",
+    }
+
+
+def periodo_trimestral(d):
+    ano = ciclo_ano_inicio(d)
+    idx = ((d.month - CICLO_MES_INICIO) % 12) // 3  # 0..3
+    inicio = _somar_meses(date(ano, CICLO_MES_INICIO, 1), idx * 3)
+    fim = _somar_meses(inicio, 3)  # exclusivo
+    ultimo = _somar_meses(inicio, 2)
+    if inicio.year == ultimo.year:
+        meses = f"{MESES_ABREV[inicio.month]} a {MESES_ABREV[ultimo.month]}/{ultimo.year}"
+    else:
+        meses = f"{MESES_ABREV[inicio.month]}/{inicio.year} a {MESES_ABREV[ultimo.month]}/{ultimo.year}"
+    numero = idx + 1
+    return {
+        "tipo": "trimestral",
+        "chave": f"{ano}-T{numero}",
+        "ciclo": ano,
+        "numero": numero,
+        "inicio": inicio,
+        "fim": fim,
+        "titulo": f"{numero}º trimestre",
+        "label": f"{numero}º trimestre {ano}/{str(ano + 1)[-2:]}",
+        "meses": meses,
+    }
+
+
+def periodo_atual(tipo, hoje=None):
+    hoje = hoje or date.today()
+    return periodo_trimestral(hoje) if tipo == "trimestral" else periodo_anual(hoje)
+
+
+def periodo_anterior(periodo):
+    return periodo_atual(periodo["tipo"], periodo["inicio"] - timedelta(days=1))
+
+
+def periodo_por_chave(tipo, chave):
+    """Reconstrói um período a partir da chave ('2026-T1' ou '2026')."""
+    try:
+        if tipo == "trimestral":
+            ano_txt, num_txt = chave.split("-T")
+            ano, numero = int(ano_txt), int(num_txt)
+            if numero not in (1, 2, 3, 4):
+                return None
+            inicio = _somar_meses(date(ano, CICLO_MES_INICIO, 1), (numero - 1) * 3)
+            return periodo_trimestral(inicio)
+        if tipo == "anual":
+            return periodo_anual(date(int(chave), CICLO_MES_INICIO, 1))
+    except (ValueError, TypeError):
+        return None
+    return None
+
+
+def periodos_encerrados(tipo, hoje=None):
+    """Períodos já encerrados desde o início dos rankings, mais recente primeiro."""
+    atual = periodo_atual(tipo, hoje)
+    lista = []
+    p = periodo_anterior(atual)
+    while p["fim"] > INICIO_RANKINGS:
+        lista.append(p)
+        p = periodo_anterior(p)
+    return lista
+
+
+def ranking_do_periodo(periodo, somente_com_presenca=False):
+    """Classificação de um período: 1 ponto por dia de presença confirmada.
+
+    Período em andamento: mostra todos os alunos ativos (inclusive com 0).
+    Período encerrado (somente_com_presenca=True): mostra todo aluno que
+    teve presença naquele período, mesmo que hoje esteja inativo — o
+    histórico fica preservado como aconteceu.
+    """
+    db = get_db()
+    rows = db.execute(
+        "SELECT student_id, COUNT(DISTINCT workout_date) AS total FROM checkins "
+        "WHERE status = 'approved' AND workout_date >= ? AND workout_date < ? "
+        "GROUP BY student_id",
+        (periodo["inicio"].isoformat(), periodo["fim"].isoformat()),
+    ).fetchall()
+    tally = {r["student_id"]: int(r["total"]) for r in rows}
+
+    if somente_com_presenca:
+        alunos = []
+        for sid in tally:
+            s = get_student(sid)
+            if s:
+                alunos.append(s)
+    else:
+        alunos = get_active_students()
+
+    lista = [
+        {
+            "id": s["id"],
+            "name": display_name(s),
+            "photo": s["photo"],
+            "count": tally.get(s["id"], 0),
+        }
+        for s in alunos
+    ]
+    lista.sort(key=lambda x: (-x["count"], x["name"].lower()))
+
+    # Empates dividem a posição (1, 1, 3...).
+    pos, anterior = 0, None
+    for i, r in enumerate(lista, start=1):
+        if r["count"] != anterior:
+            pos, anterior = i, r["count"]
+        r["pos"] = pos
+    return lista
+
+
+def vencedores_do_periodo(periodo):
+    """Aluno(s) em 1º lugar num período (lista, por causa de empates)."""
+    lista = ranking_do_periodo(periodo, somente_com_presenca=True)
+    return [r for r in lista if r["pos"] == 1 and r["count"] > 0]
+
+
 def is_admin():
     return session.get("is_admin", False)
 
@@ -1525,8 +1691,9 @@ app.jinja_env.filters["reais"] = format_money
 @app.route("/")
 def index():
     students = get_active_students()
-    ranking_year = build_ranking("year")[:3]
-    return render_template("index.html", students=students, top3=ranking_year)
+    ano = periodo_atual("anual")
+    top3 = [r for r in ranking_do_periodo(ano) if r["count"] > 0][:3]
+    return render_template("index.html", students=students, top3=top3, ano_periodo=ano)
 
 
 def attempt_pin(student, pin):
@@ -1760,10 +1927,30 @@ def alterar_pin(student_id):
 
 @app.route("/ranking")
 def ranking():
-    period = request.args.get("periodo", "month")
-    if period not in ("week", "month", "year", "all"):
-        period = "month"
-    data = build_ranking(period)
+    period = request.args.get("periodo", "trimestral")
+    # Links antigos: "year" passa a ser o Ranking Anual (ago–jul).
+    period = {"year": "anual", "quarter": "trimestral"}.get(period, period)
+    if period not in ("trimestral", "anual", "week", "month", "all"):
+        period = "trimestral"
+
+    periodo = None
+    anterior = None
+    vencedores_anteriores = []
+    if period in ("trimestral", "anual"):
+        periodo = periodo_atual(period)
+        data = ranking_do_periodo(periodo)
+        anterior = periodo_anterior(periodo)
+        if anterior["fim"] > INICIO_RANKINGS:
+            vencedores_anteriores = vencedores_do_periodo(anterior)
+        else:
+            anterior = None
+    else:
+        data = build_ranking(period)
+        pos, ultimo = 0, None
+        for i, r in enumerate(data, start=1):
+            if r["count"] != ultimo:
+                pos, ultimo = i, r["count"]
+            r["pos"] = pos
 
     db = get_db()
     champion = db.execute(
@@ -1771,7 +1958,50 @@ def ranking():
         "JOIN students s ON s.id = c.student_id ORDER BY c.year DESC LIMIT 1"
     ).fetchone()
 
-    return render_template("ranking.html", ranking=data, period=period, champion=champion)
+    return render_template(
+        "ranking.html",
+        ranking=data,
+        period=period,
+        periodo=periodo,
+        anterior=anterior,
+        vencedores_anteriores=vencedores_anteriores,
+        champion=champion,
+        hoje=date.today(),
+    )
+
+
+@app.route("/ranking/historico")
+def ranking_historico():
+    tipo = request.args.get("tipo", "trimestral")
+    if tipo not in ("trimestral", "anual"):
+        tipo = "trimestral"
+    encerrados = [
+        {"periodo": p, "vencedores": vencedores_do_periodo(p)}
+        for p in periodos_encerrados(tipo)
+    ]
+    return render_template(
+        "ranking_historico.html",
+        tipo=tipo,
+        encerrados=encerrados,
+        atual=periodo_atual(tipo),
+    )
+
+
+@app.route("/ranking/historico/<tipo>/<chave>")
+def ranking_historico_periodo(tipo, chave):
+    periodo = periodo_por_chave(tipo, chave)
+    if not periodo or periodo["fim"] <= INICIO_RANKINGS or periodo["inicio"] > date.today():
+        flash("Período não encontrado.", "error")
+        return redirect(url_for("ranking_historico", tipo=tipo if tipo in ("trimestral", "anual") else "trimestral"))
+    em_andamento = periodo["chave"] == periodo_atual(tipo)["chave"]
+    data = ranking_do_periodo(periodo, somente_com_presenca=not em_andamento)
+    return render_template(
+        "ranking_periodo.html",
+        tipo=tipo,
+        periodo=periodo,
+        ranking=data,
+        em_andamento=em_andamento,
+    )
 
 
 @app.route("/admin/ranking/exportar")
@@ -1780,10 +2010,19 @@ def exportar_ranking():
         return redirect(url_for("admin_login"))
 
     period = request.args.get("periodo", "month")
-    if period not in ("week", "month", "year"):
+    period = {"year": "anual", "quarter": "trimestral"}.get(period, period)
+    if period not in ("week", "month", "all", "trimestral", "anual"):
         period = "month"
-    labels = {"week": "Semana", "month": "Mês", "year": "Ano"}
-    data = build_ranking(period)
+    labels = {"week": "Semana", "month": "Mês", "all": "Geral"}
+    if period in ("trimestral", "anual"):
+        chave = request.args.get("chave")
+        periodo = periodo_por_chave(period, chave) if chave else None
+        periodo = periodo or periodo_atual(period)
+        em_andamento = periodo["chave"] == periodo_atual(period)["chave"]
+        data = ranking_do_periodo(periodo, somente_com_presenca=not em_andamento)
+        labels[period] = periodo["label"].replace("º", "").replace("/", "-").replace(" ", "-")
+    else:
+        data = build_ranking(period)
 
     wb = Workbook()
     ws = wb.active
@@ -1797,7 +2036,7 @@ def exportar_ranking():
         cell.alignment = Alignment(horizontal="center")
 
     for i, r in enumerate(data, start=1):
-        ws.append([i, r["name"], r["count"]])
+        ws.append([r.get("pos", i), r["name"], r["count"]])
 
     ws.column_dimensions["A"].width = 10
     ws.column_dimensions["B"].width = 30
@@ -2663,13 +2902,15 @@ def admin_campeoes():
         "SELECT c.*, s.name, s.nickname, s.photo FROM champions c "
         "JOIN students s ON s.id = c.student_id ORDER BY c.year DESC"
     ).fetchall()
-    ranking_year = build_ranking("year")
-    already_closed = any(c["year"] == date.today().year for c in campeoes)
+    ano = periodo_atual("anual")
+    ranking_year = ranking_do_periodo(ano)
+    already_closed = any(c["year"] == ano["ciclo"] for c in campeoes)
     return render_template(
         "admin_campeoes.html",
         campeoes=campeoes,
         ranking_year=ranking_year,
         already_closed=already_closed,
+        ano_periodo=ano,
     )
 
 
@@ -2678,10 +2919,11 @@ def fechar_ano():
     if not require_admin():
         return redirect(url_for("admin_login"))
 
-    year = date.today().year
-    ranking_year = build_ranking("year")
+    ano = periodo_atual("anual")
+    year = ano["ciclo"]  # campeões passam a ser registrados por ano de apuração (ago–jul)
+    ranking_year = ranking_do_periodo(ano)
     if not ranking_year or ranking_year[0]["count"] == 0:
-        flash("Ainda não há check-ins aprovados este ano para fechar o ranking.", "error")
+        flash("Ainda não há presenças neste ano de apuração para fechar o ranking.", "error")
         return redirect(url_for("admin_campeoes"))
 
     winner = ranking_year[0]
@@ -2692,10 +2934,10 @@ def fechar_ano():
             (year, winner["id"], winner["count"], datetime.now().isoformat()),
         )
         db.commit()
-        flash(f"Ano {year} fechado! Campeão: {winner['name']} com {winner['count']} treinos.", "success")
+        flash(f"{ano['label']} fechado! Campeão: {winner['name']} com {winner['count']} treinos.", "success")
     except IntegrityError:
         db.rollback()
-        flash(f"O ano {year} já foi fechado anteriormente.", "error")
+        flash(f"O {ano['label']} já foi fechado anteriormente.", "error")
 
     return redirect(url_for("admin_campeoes"))
 
@@ -2932,8 +3174,8 @@ def admin_perfil_financeiro(student_id):
     ).fetchall()
 
     week, month, year, total_checkins = counts_for_student(student_id)
-    ranking_year = build_ranking("year")
-    my_position = next((i + 1 for i, r in enumerate(ranking_year) if r["id"] == student_id), None)
+    ranking_year = ranking_do_periodo(periodo_atual("anual"))
+    my_position = next((r["pos"] for r in ranking_year if r["id"] == student_id), None)
 
     ultima_presenca = db.execute(
         "SELECT workout_date FROM checkins WHERE student_id = ? AND status = 'approved' "
