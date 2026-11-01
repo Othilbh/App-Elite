@@ -15,8 +15,8 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import (Image as RLImage, Paragraph, SimpleDocTemplate,
-                                 Spacer, Table, TableStyle)
+from reportlab.platypus import (Image as RLImage, KeepTogether, Paragraph,
+                                 SimpleDocTemplate, Spacer, Table, TableStyle)
 from werkzeug.exceptions import NotFound
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -1093,7 +1093,7 @@ def _pdf_status_colors(status):
 
 def _pdf_styles():
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="AcademyTitle", fontName="Helvetica-Bold", fontSize=17, textColor=PDF_DARK))
+    styles.add(ParagraphStyle(name="AcademyTitle", fontName="Helvetica-Bold", fontSize=17, leading=21, textColor=PDF_DARK, spaceAfter=2))
     styles.add(ParagraphStyle(name="ReportKicker", fontName="Helvetica-Bold", fontSize=9, textColor=PDF_GOLD, spaceAfter=2))
     styles.add(ParagraphStyle(name="ReportMeta", fontName="Helvetica", fontSize=9, textColor=PDF_MUTED, alignment=TA_RIGHT))
     styles.add(ParagraphStyle(name="SectionHeading", fontName="Helvetica-Bold", fontSize=12, textColor=PDF_DARK, spaceBefore=16, spaceAfter=8))
@@ -1227,7 +1227,7 @@ def build_student_pdf(student, historico, periodo_label):
     elements.append(hist_table)
 
     elements.append(Spacer(1, 14))
-    elements.append(Paragraph("Totais do período", styles["SectionHeading"]))
+    totais_titulo = Paragraph("Totais do período", styles["SectionHeading"])
     pendente_only = sum(m["valor"] for m in historico if m["status"] == "pendente")
     atrasado_only = sum(m["valor"] for m in historico if m["status"] == "atrasado")
     totais = Table(
@@ -1241,6 +1241,7 @@ def build_student_pdf(student, historico, periodo_label):
         ("TEXTCOLOR", (0, 0), (-1, 0), PDF_MUTED),
         ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 1), (-1, 1), 13),
+        ("LEADING", (0, 1), (-1, 1), 16),
         ("TEXTCOLOR", (0, 1), (0, 1), PDF_GREEN_TEXT),
         ("TEXTCOLOR", (1, 1), (1, 1), PDF_YELLOW_TEXT),
         ("TEXTCOLOR", (2, 1), (2, 1), PDF_RED_TEXT),
@@ -1250,7 +1251,8 @@ def build_student_pdf(student, historico, periodo_label):
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
-    elements.append(totais)
+    # Título e valores ficam sempre juntos na mesma página.
+    elements.append(KeepTogether([totais_titulo, totais]))
 
     doc.build(elements, onFirstPage=_pdf_footer, onLaterPages=_pdf_footer)
     buffer.seek(0)
@@ -1308,7 +1310,7 @@ def build_general_report_pdf(rows, periodo_label, total_pago, total_pendente, to
     elements.append(table)
 
     elements.append(Spacer(1, 14))
-    elements.append(Paragraph("Totais consolidados", styles["SectionHeading"]))
+    totais_titulo = Paragraph("Totais consolidados", styles["SectionHeading"])
     totais = Table(
         [["Total pago", "Total pendente", "Total em atraso"],
          [format_money(total_pago), format_money(total_pendente), format_money(total_atrasado)]],
@@ -1320,6 +1322,7 @@ def build_general_report_pdf(rows, periodo_label, total_pago, total_pendente, to
         ("TEXTCOLOR", (0, 0), (-1, 0), PDF_MUTED),
         ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 1), (-1, 1), 13),
+        ("LEADING", (0, 1), (-1, 1), 16),
         ("TEXTCOLOR", (0, 1), (0, 1), PDF_GREEN_TEXT),
         ("TEXTCOLOR", (1, 1), (1, 1), PDF_YELLOW_TEXT),
         ("TEXTCOLOR", (2, 1), (2, 1), PDF_RED_TEXT),
@@ -1329,7 +1332,8 @@ def build_general_report_pdf(rows, periodo_label, total_pago, total_pendente, to
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
-    elements.append(totais)
+    # Título e valores ficam sempre juntos na mesma página.
+    elements.append(KeepTogether([totais_titulo, totais]))
 
     doc.build(elements, onFirstPage=_pdf_footer, onLaterPages=_pdf_footer)
     buffer.seek(0)
