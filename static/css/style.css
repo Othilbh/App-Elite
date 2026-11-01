@@ -623,3 +623,45 @@ textarea { resize: vertical; }
 .history-head .muted { font-size: 0.82rem; }
 .history-winner { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .history-link { display: block; margin-top: 8px; font-size: 0.8rem; color: var(--accent); }
+
+/* Visualizador de PDF central (static/js/pdf-viewer.js) */
+html.pdfv-open, html.pdfv-open body { overflow: hidden; }
+.pdfv {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; flex-direction: column;
+  background: #2b2f38;
+}
+.pdfv[hidden] { display: none; }
+.pdfv-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; padding-top: max(8px, env(safe-area-inset-top));
+  background: var(--bg); border-bottom: 1px solid #262a33;
+}
+.pdfv-title {
+  flex: 1; min-width: 0; font-size: 0.85rem; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pdfv-actions { display: flex; align-items: center; gap: 6px; }
+.pdfv-btn {
+  min-width: 40px; height: 40px; padding: 0 10px;
+  border: none; border-radius: 10px; background: var(--card); color: var(--text);
+  font-size: 1.1rem; cursor: pointer;
+}
+.pdfv-btn.pdfv-text { font-size: 0.8rem; font-weight: 600; }
+.pdfv-btn[hidden] { display: none; }
+.pdfv-close { background: var(--accent); color: #11141b; font-weight: 700; font-size: 1.2rem; }
+.pdfv-zoom { font-size: 0.75rem; color: var(--muted); min-width: 38px; text-align: center; }
+.pdfv-body {
+  flex: 1; overflow: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 10px 8px calc(16px + env(safe-area-inset-bottom));
+}
+.pdfv-page { background: #fff; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); max-width: none; }
+.pdfv-frame { flex: 1; width: 100%; min-height: 70vh; border: none; background: #fff; }
+.pdfv-msg { color: var(--text); margin-top: 40px; text-align: center; padding: 0 16px; }
+.pdfv-msg.pdfv-error { color: var(--danger); }
+[aria-busy="true"] { opacity: 0.7; }
+@media (max-width: 480px) {
+  .pdfv-zoom { display: none; }
+  .pdfv-btn { min-width: 36px; height: 36px; padding: 0 8px; }
+}

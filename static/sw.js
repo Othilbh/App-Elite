@@ -3,7 +3,7 @@
 // Páginas (HTML) e ações de check-in NUNCA são cacheadas, para que o
 // ranking e os status de aprovação sempre reflitam o servidor em tempo real.
 
-const CACHE_NAME = "elite-hapkido-static-v2";
+const CACHE_NAME = "elite-hapkido-static-v3";
 const STATIC_ASSETS = [
   "/static/css/style.css",
   "/static/icons/icon-192.png",
