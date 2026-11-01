@@ -16,6 +16,7 @@
   {% else %}
     <p class="muted">Digite seu PIN de 4 números para continuar.</p>
     <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="password" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4"
              placeholder="0000" autofocus required
              style="text-align:center;letter-spacing:6px;font-size:1.4rem;">

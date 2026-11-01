@@ -5,6 +5,7 @@
 <section class="auth-box">
   <h1>Login do professor</h1>
   <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="username">Usuário</label>
     <input type="text" id="username" name="username" required autocomplete="username" autofocus>
 

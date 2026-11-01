@@ -8,14 +8,10 @@
   <p class="hero-sub">Entre com seu nome e seu PIN para registrar o treino de hoje.</p>
 
   <form method="post" action="{{ url_for('entrar_por_nome') }}" class="login-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="nome">Seu nome ou apelido</label>
-    <input type="text" id="nome" name="nome" list="alunos-lista" autocomplete="off"
-           placeholder="Como o professor te cadastrou" required>
-    <datalist id="alunos-lista">
-      {% for s in students %}
-        <option value="{{ s.nickname or s.name }}">
-      {% endfor %}
-    </datalist>
+    <input type="text" id="nome" name="nome" autocomplete="username" autocapitalize="words"
+           placeholder="Seu nome ou apelido" required>
 
     <label for="pin">PIN</label>
     <input type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4"

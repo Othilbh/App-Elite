@@ -1,9 +1,12 @@
 import os
 import random
+import secrets
+import unicodedata
 import sqlite3
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 from flask import (Flask, flash, g, redirect, render_template, request,
                     send_file, send_from_directory, session, url_for)
@@ -95,8 +98,42 @@ def belt_info(total_checkins):
         "remaining": remaining,
     }
 
+# --------------------------------------------------------------------------
+# Fuso horário (A1): o servidor do Render roda em UTC. Todas as datas e horas
+# do app ("hoje", chamada, rankings, vencimentos, saudação) usam o horário de
+# Brasília, independente do fuso do servidor.
+# --------------------------------------------------------------------------
+APP_TZ = ZoneInfo(os.environ.get("APP_TIMEZONE", "America/Sao_Paulo"))
+
+
+def agora_br():
+    """Data e hora atuais no fuso da academia (sem tzinfo, como antes)."""
+    return datetime.now(APP_TZ).replace(tzinfo=None)
+
+
+def hoje_br():
+    """Data de hoje no fuso da academia."""
+    return agora_br().date()
+
+
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "troque-esta-chave-em-producao")
+
+# Chave que assina a sessão (A2). Sem a variável SECRET_KEY, a chave padrão
+# abaixo é pública (está no código) e permitiria forjar um login de
+# professor. Em produção o app continua no ar, mas avisa no painel do
+# professor até a variável ser configurada no Render.
+_DEFAULT_SECRET = "troque-esta-chave-em-producao"
+_env_secret = os.environ.get("SECRET_KEY", "").strip()
+SECRET_KEY_INSEGURA = (not _env_secret) or _env_secret == _DEFAULT_SECRET or len(_env_secret) < 16
+app.config["SECRET_KEY"] = _env_secret or _DEFAULT_SECRET
+if SECRET_KEY_INSEGURA and USE_POSTGRES:
+    app.logger.warning("SECRET_KEY ausente ou fraca: configure a variável SECRET_KEY no Render.")
+
+# Cookie de sessão (A8): só via HTTPS em produção, inacessível a scripts e não
+# enviado em requisições vindas de outros sites.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = USE_POSTGRES
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -322,13 +359,16 @@ def init_db():
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS notes TEXT")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_data BYTEA")
         cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_mime TEXT")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS image_consent INTEGER NOT NULL DEFAULT 0")
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS image_consent_at TEXT")
         cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS teacher_id INTEGER REFERENCES teachers (id)")
         cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS username TEXT")
         cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS password_hash TEXT")
+        cur.execute("CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)")
         cur.execute(
             "INSERT INTO teachers (name, active, created_at) "
             "SELECT %s, 1, %s WHERE NOT EXISTS (SELECT 1 FROM teachers)",
-            ("Professor", datetime.now().isoformat()),
+            ("Professor", agora_br().isoformat()),
         )
         cur.close()
         conn.close()
@@ -499,6 +539,8 @@ def init_db():
         "ALTER TABLE students ADD COLUMN notes TEXT",
         "ALTER TABLE students ADD COLUMN photo_data BLOB",
         "ALTER TABLE students ADD COLUMN photo_mime TEXT",
+        "ALTER TABLE students ADD COLUMN image_consent INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE students ADD COLUMN image_consent_at TEXT",
         "ALTER TABLE checkins ADD COLUMN teacher_id INTEGER",
         "ALTER TABLE teachers ADD COLUMN username TEXT",
         "ALTER TABLE teachers ADD COLUMN password_hash TEXT",
@@ -508,6 +550,8 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # coluna já existe
 
+    db.execute("CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)")
+
     # Semeia um professor padrão na primeira vez (mantém compatibilidade com
     # o uso atual, de um único professor) para que o check-in sempre tenha
     # pelo menos uma opção de professor disponível.
@@ -515,7 +559,7 @@ def init_db():
     if not existing_teachers:
         db.execute(
             "INSERT INTO teachers (name, active, created_at) VALUES (?, 1, ?)",
-            ("Professor", datetime.now().isoformat()),
+            ("Professor", agora_br().isoformat()),
         )
 
     db.commit()
@@ -554,7 +598,7 @@ def save_student_photo(file_storage, name):
     img.thumbnail((MAX_PHOTO_DIMENSION, MAX_PHOTO_DIMENSION), Image.LANCZOS)
 
     safe_base = secure_filename(name).lower() or "aluno"
-    filename = f"{safe_base}-{int(datetime.now().timestamp())}.jpg"
+    filename = f"{safe_base}-{int(agora_br().timestamp())}.jpg"
 
     buffer = BytesIO()
     img.save(buffer, "JPEG", quality=PHOTO_JPEG_QUALITY, optimize=True)
@@ -580,6 +624,10 @@ def is_student_verified(student_id):
     trancar ninguém fora. Quem tem PIN precisa ter verificado nesta sessão."""
     student = get_student(student_id)
     if not student or not student["pin"]:
+        # Sem PIN o acesso já é livre; registra na sessão para o aluno
+        # também ver ranking e a própria foto (A7).
+        if student:
+            mark_student_verified(student_id)
         return True
     return student_id in session.get("verified_students", [])
 
@@ -597,7 +645,7 @@ def pin_lock_remaining_minutes(student):
     if not locked_until:
         return 0
     until = datetime.fromisoformat(locked_until)
-    remaining = (until - datetime.now()).total_seconds()
+    remaining = (until - agora_br()).total_seconds()
     if remaining <= 0:
         return 0
     return max(1, int(remaining // 60) + 1)
@@ -607,7 +655,7 @@ def register_failed_pin(student_id, current_attempts):
     db = get_db()
     attempts = (current_attempts or 0) + 1
     if attempts >= MAX_PIN_ATTEMPTS:
-        locked_until = (datetime.now() + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
+        locked_until = (agora_br() + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
         db.execute(
             "UPDATE students SET pin_attempts = 0, pin_locked_until = ? WHERE id = ?",
             (locked_until, student_id),
@@ -628,7 +676,7 @@ def reset_pin_attempts(student_id):
 
 
 def today_str():
-    return date.today().isoformat()
+    return hoje_br().isoformat()
 
 
 def get_proximo_evento(tipo):
@@ -656,7 +704,7 @@ def format_evento(row):
     (usado na tela inicial do aluno)."""
     if not row:
         return None
-    dias = (date.fromisoformat(row["data_evento"]) - date.today()).days
+    dias = (date.fromisoformat(row["data_evento"]) - hoje_br()).days
     if dias == 0:
         label = "É hoje!"
     elif dias == 1:
@@ -726,7 +774,7 @@ def get_tempo_treinamento(student_id, student):
         start = date.fromisoformat(start_str[:10])
     except ValueError:
         return None
-    days = (date.today() - start).days
+    days = (hoje_br() - start).days
     if days < 0:
         days = 0
     years = days // 365
@@ -779,7 +827,7 @@ def calculate_age(birth_date_str):
         b = date.fromisoformat(birth_date_str)
     except ValueError:
         return None
-    today = date.today()
+    today = hoje_br()
     age = today.year - b.year - ((today.month, today.day) < (b.month, b.day))
     return age
 
@@ -788,6 +836,34 @@ def display_name(student):
     return student["nickname"] or student["name"]
 
 
+# --------------------------------------------------------------------------
+# Privacidade (A7): ranking, fotos e lista de alunos só para quem é da
+# academia (aluno que entrou com nome + PIN, ou professor logado). A foto de
+# um aluno só aparece para OUTROS alunos se o uso de imagem foi autorizado
+# (campo na Ficha completa); o próprio aluno e o professor sempre veem.
+# --------------------------------------------------------------------------
+def tem_acesso_interno():
+    return is_admin() or bool(session.get("verified_students"))
+
+
+def pode_ver_foto(student):
+    if not student or not student["photo"]:
+        return False
+    if is_admin() or student["id"] in session.get("verified_students", []):
+        return True
+    try:
+        return bool(student["image_consent"])
+    except (KeyError, IndexError):
+        return False
+
+
+def foto_para_exibir(student):
+    return student["photo"] if pode_ver_foto(student) else None
+
+
+def _sem_acentos(texto):
+    texto = unicodedata.normalize("NFKD", (texto or "").strip().lower())
+    return " ".join("".join(c for c in texto if not unicodedata.combining(c)).split())
 # --------------------------------------------------------------------------
 # Financeiro / Mensalidades
 # --------------------------------------------------------------------------
@@ -854,7 +930,7 @@ def days_overdue(due_date_str):
         due = date.fromisoformat(due_date_str)
     except (ValueError, TypeError):
         return 0
-    delta = (date.today() - due).days
+    delta = (hoje_br() - due).days
     return delta if delta > 0 else 0
 
 
@@ -875,11 +951,11 @@ def generate_next_month_mensalidades():
     com billing_status='ativo' e mensalidade configurada. Não duplica quem
     já tem mensalidade gerada pra esse mês/ano (UNIQUE student+ref_month+ref_year)."""
     db = get_db()
-    today = date.today()
+    today = hoje_br()
     ref_month, ref_year = add_months(today.month, today.year, 1)
 
     students = db.execute(
-        "SELECT * FROM students WHERE billing_status = 'ativo' AND monthly_fee IS NOT NULL"
+        "SELECT * FROM students WHERE active = 1 AND billing_status = 'ativo' AND monthly_fee IS NOT NULL"
     ).fetchall()
 
     created = 0
@@ -897,8 +973,9 @@ def generate_next_month_mensalidades():
             db.execute(
                 "INSERT INTO mensalidades (student_id, ref_month, ref_year, valor, due_date, status, created_at) "
                 "VALUES (?, ?, ?, ?, ?, 'pendente', ?)",
-                (s["id"], ref_month, ref_year, s["monthly_fee"], due_date, datetime.now().isoformat()),
+                (s["id"], ref_month, ref_year, s["monthly_fee"], due_date, agora_br().isoformat()),
             )
+            db.commit()  # grava aluno a aluno: um conflito não desfaz os anteriores
             created += 1
         except IntegrityError:
             db.rollback()
@@ -909,7 +986,7 @@ def generate_next_month_mensalidades():
 def financial_dashboard_data():
     """Indicadores e dados de gráfico pro dashboard de Mensalidades."""
     db = get_db()
-    today = date.today()
+    today = hoje_br()
 
     total_ativos = db.execute(
         "SELECT COUNT(*) AS total FROM students WHERE billing_status = 'ativo'"
@@ -993,24 +1070,39 @@ def financial_dashboard_data():
 
 
 def billing_indicator(student_id):
-    """🟢 em dia / 🟡 vence hoje / 🔴 atrasado / cinza sem mensalidade, pra
-    mostrar na lista de alunos."""
+    """🟢 em dia / 🟡 vence hoje / 🔴 atrasado / None sem mensalidade.
+
+    Considera TODAS as mensalidades do aluno (A5), não só a mais recente:
+    gerar o mês seguinte não pode esconder um mês anterior em atraso."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT status, due_date FROM mensalidades WHERE student_id = ?",
+        (student_id,),
+    ).fetchall()
+    if not rows:
+        return None
+    hoje_str = today_str()
+    vence_hoje = False
+    for r in rows:
+        if r["status"] == "atrasado":
+            return "red"
+        if r["status"] == "pendente" and r["due_date"]:
+            if r["due_date"] < hoje_str:
+                return "red"
+            if r["due_date"] == hoje_str:
+                vence_hoje = True
+    return "yellow" if vence_hoje else "green"
+
+
+def valor_em_atraso(student_id):
+    """Total em atraso do aluno (mensalidades atrasadas ou pendentes vencidas)."""
     db = get_db()
     row = db.execute(
-        "SELECT * FROM mensalidades WHERE student_id = ? ORDER BY ref_year DESC, ref_month DESC LIMIT 1",
-        (student_id,),
+        "SELECT COALESCE(SUM(valor), 0) AS total FROM mensalidades WHERE student_id = ? "
+        "AND (status = 'atrasado' OR (status = 'pendente' AND due_date < ?))",
+        (student_id, today_str()),
     ).fetchone()
-    if not row:
-        return None
-    if row["status"] == "atrasado":
-        return "red"
-    if row["status"] == "pendente":
-        # Só é "vence hoje" se o vencimento for hoje mesmo. Pendente com
-        # vencimento no futuro está tudo bem (em dia) — ainda não chegou a hora.
-        return "yellow" if row["due_date"] == today_str() else "green"
-    if row["status"] in ("pago", "isento"):
-        return "green"
-    return None
+    return float(row["total"] or 0)
 
 
 SITUACAO_LABELS = {
@@ -1031,7 +1123,7 @@ PERIODO_LABELS = {
 
 def period_months_set(periodo, inicio="", fim=""):
     """Retorna (set_de_(mes,ano) ou None-pra-'sem filtro', label)."""
-    today = date.today()
+    today = hoje_br()
     if periodo == "mes_atual":
         return {(today.month, today.year)}, PERIODO_LABELS["mes_atual"]
     if periodo in ("3m", "6m", "12m"):
@@ -1141,7 +1233,7 @@ def build_student_pdf(student, historico, periodo_label):
     )
     elements = []
 
-    hoje = date.today().strftime("%d/%m/%Y")
+    hoje = hoje_br().strftime("%d/%m/%Y")
     situacao = SITUACAO_LABELS.get(billing_indicator(student["id"]))
     elements.append(_pdf_header_table(
         styles, "Relatório Financeiro Individual",
@@ -1267,7 +1359,7 @@ def build_general_report_pdf(rows, periodo_label, total_pago, total_pendente, to
         topMargin=18 * mm, bottomMargin=20 * mm, leftMargin=20 * mm, rightMargin=20 * mm,
     )
     elements = []
-    hoje = date.today().strftime("%d/%m/%Y")
+    hoje = hoje_br().strftime("%d/%m/%Y")
     elements.append(_pdf_header_table(
         styles, "Relatório Geral da Academia",
         [f"Emitido em {hoje}", f"Período: {periodo_label}", f"{len(rows)} aluno(s)"],
@@ -1378,7 +1470,7 @@ def counts_for_student(student_id):
         "SELECT workout_date FROM checkins WHERE student_id = ? AND status = 'approved'",
         (student_id,),
     ).fetchall()
-    today = date.today()
+    today = hoje_br()
     cur_iso_year, cur_week, _ = today.isocalendar()
     ano_atual = periodo_anual(today)  # "ano" = ano de apuração (ago–jul)
     week = month = year = 0
@@ -1411,13 +1503,13 @@ def student_frequency_stats(student_id):
 
     if dates:
         first = min(dates)
-        weeks_elapsed = max(1, ((date.today() - first).days // 7) + 1)
+        weeks_elapsed = max(1, ((hoje_br() - first).days // 7) + 1)
         weekly_avg = round(total / weeks_elapsed, 1)
     else:
         weekly_avg = 0
 
     streak = 0
-    if dates and dates[0] in (date.today(), date.today() - timedelta(days=1)):
+    if dates and dates[0] in (hoje_br(), hoje_br() - timedelta(days=1)):
         cursor = dates[0]
         for d in dates:
             if d == cursor:
@@ -1450,7 +1542,7 @@ def student_checkin_history(student_id, months=None):
     ).fetchall()
     if not months:
         return rows
-    cutoff = date.today() - timedelta(days=30 * months)
+    cutoff = hoje_br() - timedelta(days=30 * months)
     return [r for r in rows if date.fromisoformat(r["workout_date"]) >= cutoff]
 
 
@@ -1461,7 +1553,7 @@ def build_ranking(period):
     rows = db.execute(
         "SELECT student_id, workout_date FROM checkins WHERE status = 'approved'"
     ).fetchall()
-    today = date.today()
+    today = hoje_br()
     cur_iso_year, cur_week, _ = today.isocalendar()
 
     tally = defaultdict(int)
@@ -1486,7 +1578,7 @@ def build_ranking(period):
             {
                 "id": s["id"],
                 "name": display_name(s),
-                "photo": s["photo"],
+                "photo": foto_para_exibir(s),
                 "count": tally.get(s["id"], 0),
             }
         )
@@ -1571,7 +1663,7 @@ def periodo_trimestral(d):
 
 
 def periodo_atual(tipo, hoje=None):
-    hoje = hoje or date.today()
+    hoje = hoje or hoje_br()
     return periodo_trimestral(hoje) if tipo == "trimestral" else periodo_anual(hoje)
 
 
@@ -1637,7 +1729,7 @@ def ranking_do_periodo(periodo, somente_com_presenca=False):
         {
             "id": s["id"],
             "name": display_name(s),
-            "photo": s["photo"],
+            "photo": foto_para_exibir(s),
             "count": tally.get(s["id"], 0),
         }
         for s in alunos
@@ -1672,12 +1764,40 @@ def logged_teacher():
     return get_teacher(teacher_id)
 
 
+# --------------------------------------------------------------------------
+# Proteção CSRF (A8): todo formulário POST leva um token da sessão. Um site
+# de fora não consegue ler esse token, então não consegue disparar ações
+# (excluir, pagar, inativar) em nome de quem está logado.
+# --------------------------------------------------------------------------
+def csrf_token():
+    token = session.get("_csrf")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf"] = token
+    return token
+
+
+@app.before_request
+def verificar_csrf():
+    if request.method != "POST":
+        return None
+    enviado = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token") or ""
+    esperado = session.get("_csrf") or ""
+    if esperado and enviado and secrets.compare_digest(enviado, esperado):
+        return None
+    flash("A página ficou aberta por muito tempo ou a sessão expirou. Confira e envie de novo.", "error")
+    destino = request.referrer if request.referrer and request.referrer.startswith(request.host_url) else url_for("index")
+    return redirect(destino, code=303)
+
+
 @app.context_processor
 def inject_globals():
     return {
+        "csrf_token": csrf_token,
+        "aviso_secret_key": SECRET_KEY_INSEGURA and USE_POSTGRES,
         "is_admin": is_admin(),
         "logged_teacher": logged_teacher(),
-        "current_year": date.today().year,
+        "current_year": hoje_br().year,
         "AVATAR_COLORS": AVATAR_COLORS,
         "PAYMENT_METHODS": PAYMENT_METHODS,
         "MENSALIDADE_STATUSES": MENSALIDADE_STATUSES,
@@ -1694,10 +1814,13 @@ app.jinja_env.filters["reais"] = format_money
 # --------------------------------------------------------------------------
 @app.route("/")
 def index():
-    students = get_active_students()
+    # A7: a tela de entrada não lista mais os nomes dos alunos, e o pódio só
+    # aparece para quem já entrou (aluno ou professor).
     ano = periodo_atual("anual")
-    top3 = [r for r in ranking_do_periodo(ano) if r["count"] > 0][:3]
-    return render_template("index.html", students=students, top3=top3, ano_periodo=ano)
+    top3 = []
+    if tem_acesso_interno():
+        top3 = [r for r in ranking_do_periodo(ano) if r["count"] > 0][:3]
+    return render_template("index.html", top3=top3, ano_periodo=ano)
 
 
 def attempt_pin(student, pin):
@@ -1756,12 +1879,17 @@ def entrar_por_nome():
         flash("Digite seu nome para entrar.", "error")
         return redirect(url_for("index"))
 
-    db = get_db()
-    student = db.execute(
-        "SELECT * FROM students WHERE active = 1 "
-        "AND (LOWER(nickname) = LOWER(?) OR LOWER(name) = LOWER(?)) LIMIT 1",
-        (nome_digitado, nome_digitado),
-    ).fetchone()
+    # Sem a lista de nomes na tela (A7), a busca ignora maiúsculas, acentos e
+    # espaços a mais: "joao  silva" encontra "João Silva".
+    alvo = _sem_acentos(nome_digitado)
+    candidatos = [
+        st for st in get_active_students()
+        if alvo in (_sem_acentos(st["name"]), _sem_acentos(st["nickname"]))
+    ]
+    if len(candidatos) > 1:
+        flash("Há mais de um aluno com esse nome. Digite o nome completo ou peça ajuda ao professor.", "error")
+        return redirect(url_for("index"))
+    student = candidatos[0] if candidatos else None
 
     if not student:
         flash("Não encontramos esse nome. Confira a grafia ou peça ajuda ao professor.", "error")
@@ -1819,7 +1947,7 @@ def aluno_dashboard(student_id):
 
     professores = get_active_teachers()
 
-    hora = datetime.now().hour
+    hora = agora_br().hour
     if hora < 12:
         saudacao = "Bom dia"
     elif hora < 18:
@@ -1931,6 +2059,9 @@ def alterar_pin(student_id):
 
 @app.route("/ranking")
 def ranking():
+    if not tem_acesso_interno():
+        flash("Entre com seu nome e PIN para ver o ranking.", "info")
+        return redirect(url_for("index"))
     period = request.args.get("periodo", "trimestral")
     # Links antigos: "year" passa a ser o Ranking Anual (ago–jul).
     period = {"year": "anual", "quarter": "trimestral"}.get(period, period)
@@ -1970,12 +2101,15 @@ def ranking():
         anterior=anterior,
         vencedores_anteriores=vencedores_anteriores,
         champion=champion,
-        hoje=date.today(),
+        hoje=hoje_br(),
     )
 
 
 @app.route("/ranking/historico")
 def ranking_historico():
+    if not tem_acesso_interno():
+        flash("Entre com seu nome e PIN para ver o ranking.", "info")
+        return redirect(url_for("index"))
     tipo = request.args.get("tipo", "trimestral")
     if tipo not in ("trimestral", "anual"):
         tipo = "trimestral"
@@ -1993,8 +2127,11 @@ def ranking_historico():
 
 @app.route("/ranking/historico/<tipo>/<chave>")
 def ranking_historico_periodo(tipo, chave):
+    if not tem_acesso_interno():
+        flash("Entre com seu nome e PIN para ver o ranking.", "info")
+        return redirect(url_for("index"))
     periodo = periodo_por_chave(tipo, chave)
-    if not periodo or periodo["fim"] <= INICIO_RANKINGS or periodo["inicio"] > date.today():
+    if not periodo or periodo["fim"] <= INICIO_RANKINGS or periodo["inicio"] > hoje_br():
         flash("Período não encontrado.", "error")
         return redirect(url_for("ranking_historico", tipo=tipo if tipo in ("trimestral", "anual") else "trimestral"))
     em_andamento = periodo["chave"] == periodo_atual(tipo)["chave"]
@@ -2066,17 +2203,19 @@ def uploaded_file(filename):
     arquivo não existir mais ali (por exemplo, disco não persistente que foi
     limpo num redeploy), cai para os bytes guardados no banco de dados na
     coluna photo_data — essa é a cópia que realmente sobrevive a reinícios."""
+    db = get_db()
+    dono = db.execute("SELECT * FROM students WHERE photo = ?", (filename,)).fetchone()
+    # A7: foto só para quem é da academia e respeitando a autorização de imagem.
+    if not dono or not tem_acesso_interno() or not pode_ver_foto(dono):
+        raise NotFound()
     try:
-        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+        resp = send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+        resp.headers["Cache-Control"] = "private, max-age=86400"
+        return resp
     except NotFound:
         pass
-
-    db = get_db()
-    row = db.execute(
-        "SELECT photo_data, photo_mime FROM students WHERE photo = ? AND photo_data IS NOT NULL",
-        (filename,),
-    ).fetchone()
-    if not row or not row["photo_data"]:
+    row = dono
+    if not row["photo_data"]:
         raise NotFound()
 
     data = row["photo_data"]
@@ -2091,7 +2230,7 @@ def uploaded_file(filename):
         mimetype=row["photo_mime"] or "image/jpeg",
         download_name=filename,
     )
-    response.headers["Cache-Control"] = "public, max-age=86400"
+    response.headers["Cache-Control"] = "private, max-age=86400"
     return response
 
 
@@ -2180,7 +2319,7 @@ def admin_dashboard():
     professores_ativos = db.execute(
         "SELECT COUNT(*) AS total FROM teachers WHERE active = 1"
     ).fetchone()["total"]
-    primeiro_dia_mes = date.today().replace(day=1).isoformat()
+    primeiro_dia_mes = hoje_br().replace(day=1).isoformat()
     treinos_mes = db.execute(
         "SELECT COUNT(*) AS total FROM checkins WHERE workout_date >= ?", (primeiro_dia_mes,)
     ).fetchone()["total"]
@@ -2195,6 +2334,7 @@ def admin_dashboard():
         professores_ativos=professores_ativos,
         treinos_mes=treinos_mes,
         using_postgres=USE_POSTGRES,
+        aviso_backup=aviso_de_backup(),
     )
 
 
@@ -2213,31 +2353,53 @@ def admin_chamada():
     students = get_active_students()
 
     if request.method == "POST":
-        selected_ids = {int(x) for x in request.form.getlist("student_ids")}
+        # A6: a chamada salva SÓ o que mudou nesta tela. Quem foi desmarcado
+        # aqui perde a presença; presenças registradas por outro professor
+        # (outra turma no mesmo dia) depois que esta tela abriu ficam intactas.
+        selected_ids = {int(x) for x in request.form.getlist("student_ids") if x.isdigit()}
+        originais_raw = request.form.get("presentes_originais")
+        originais = (
+            {int(x) for x in originais_raw.split(",") if x.strip().isdigit()}
+            if originais_raw is not None else None
+        )
         teacher_id = session.get("teacher_id")
-        now = datetime.now().isoformat()
+        now = agora_br().isoformat()
 
         existing_rows = db.execute(
             "SELECT id, student_id FROM checkins WHERE workout_date = ?", (data,)
         ).fetchall()
-        existing_map = {row["student_id"]: row["id"] for row in existing_rows}
+        existing_map = {}
+        for row in existing_rows:
+            existing_map.setdefault(row["student_id"], []).append(row["id"])
 
         active_ids = {s["id"] for s in students}
-        marcados = 0
+        adicionados = removidos = 0
         for sid in active_ids:
             if sid in selected_ids:
-                marcados += 1
                 if sid not in existing_map:
                     db.execute(
                         "INSERT INTO checkins (student_id, teacher_id, workout_date, status, created_at, reviewed_at) "
                         "VALUES (?, ?, ?, 'approved', ?, ?)",
                         (sid, teacher_id, data, now, now),
                     )
-            elif sid in existing_map:
-                db.execute("DELETE FROM checkins WHERE id = ?", (existing_map[sid],))
+                    adicionados += 1
+            elif originais is not None and sid in originais and sid in existing_map:
+                for checkin_id in existing_map[sid]:
+                    db.execute("DELETE FROM checkins WHERE id = ?", (checkin_id,))
+                removidos += 1
         db.commit()
 
-        flash(f"Chamada de {data} salva: {marcados} aluno(s) presente(s).", "success")
+        marcados = db.execute(
+            "SELECT COUNT(DISTINCT student_id) AS total FROM checkins WHERE workout_date = ?", (data,)
+        ).fetchone()["total"]
+        mantidos = len(set(existing_map) - selected_ids - (originais or set()))
+        resumo = f"Chamada de {date.fromisoformat(data).strftime('%d/%m/%Y')} salva: {marcados} aluno(s) presente(s) no dia"
+        if adicionados or removidos:
+            resumo += f" ({adicionados} marcado(s), {removidos} desmarcado(s) agora)"
+        resumo += "."
+        if mantidos:
+            resumo += f" {mantidos} presença(s) registrada(s) por outro professor foram mantidas."
+        flash(resumo, "success")
         return redirect(url_for("admin_chamada", data=data))
 
     presentes_rows = db.execute(
@@ -2275,7 +2437,7 @@ def admin_eventos():
             db.execute(
                 "INSERT INTO eventos (tipo, titulo, descricao, data_evento, ativo, created_at) "
                 "VALUES (?, ?, ?, ?, 1, ?)",
-                (tipo, titulo, descricao or None, data_evento, datetime.now().isoformat()),
+                (tipo, titulo, descricao or None, data_evento, agora_br().isoformat()),
             )
             db.commit()
             flash("Publicado para os alunos.", "success")
@@ -2307,7 +2469,7 @@ def aprovar_checkin(checkin_id):
     db = get_db()
     db.execute(
         "UPDATE checkins SET status = 'approved', reviewed_at = ? WHERE id = ?",
-        (datetime.now().isoformat(), checkin_id),
+        (agora_br().isoformat(), checkin_id),
     )
     db.commit()
     flash("Presença confirmada!", "success")
@@ -2321,7 +2483,7 @@ def rejeitar_checkin(checkin_id):
     db = get_db()
     db.execute(
         "UPDATE checkins SET status = 'rejected', reviewed_at = ? WHERE id = ?",
-        (datetime.now().isoformat(), checkin_id),
+        (agora_br().isoformat(), checkin_id),
     )
     db.commit()
     flash("Check-in rejeitado.", "info")
@@ -2354,10 +2516,12 @@ def admin_alunos():
 
     students = db.execute(query, tuple(params)).fetchall()
     indicadores = {s["id"]: billing_indicator(s["id"]) for s in students}
+    em_atraso = {sid: valor_em_atraso(sid) for sid, ind in indicadores.items() if ind == "red"}
     return render_template(
         "admin_alunos.html",
         students=students,
         indicadores=indicadores,
+        em_atraso=em_atraso,
         q=q,
         status=status,
     )
@@ -2397,7 +2561,7 @@ def admin_frequencia():
         stats = student_frequency_stats(s["id"])
         dias_sem_treinar = None
         if stats["last_checkin"]:
-            dias_sem_treinar = (date.today() - date.fromisoformat(stats["last_checkin"])).days
+            dias_sem_treinar = (hoje_br() - date.fromisoformat(stats["last_checkin"])).days
         item = {"student": s, "stats": stats, "dias_sem_treinar": dias_sem_treinar}
         rows.append(item)
         if dias_sem_treinar is None or dias_sem_treinar > 7:
@@ -2441,6 +2605,12 @@ def admin_editar_aluno(student_id):
         due_day_raw = request.form.get("due_day", "").strip()
         billing_status = request.form.get("billing_status", "ativo").strip()
         notes = request.form.get("notes", "").strip()
+        image_consent = 1 if request.form.get("image_consent") == "on" else 0
+        image_consent_at = student["image_consent_at"]
+        if image_consent and not student["image_consent"]:
+            image_consent_at = agora_br().isoformat(timespec="minutes")
+        elif not image_consent:
+            image_consent_at = None
 
         monthly_fee = None
         if monthly_fee_raw:
@@ -2484,7 +2654,8 @@ def admin_editar_aluno(student_id):
         db.execute(
             "UPDATE students SET birth_date = ?, real_belt = ?, phone = ?, "
             "guardian_name = ?, guardian_phone = ?, address = ?, active = ?, "
-            "email = ?, modality = ?, monthly_fee = ?, due_day = ?, billing_status = ?, notes = ? "
+            "email = ?, modality = ?, monthly_fee = ?, due_day = ?, billing_status = ?, notes = ?, "
+            "image_consent = ?, image_consent_at = ? "
             "WHERE id = ?",
             (
                 birth_date or None,
@@ -2500,6 +2671,8 @@ def admin_editar_aluno(student_id):
                 due_day,
                 billing_status or "ativo",
                 notes or None,
+                image_consent,
+                image_consent_at,
                 student_id,
             ),
         )
@@ -2539,7 +2712,7 @@ def admin_nova_graduacao(student_id):
     db = get_db()
     db.execute(
         "INSERT INTO graduacoes (student_id, faixa, data, observacao, created_at) VALUES (?, ?, ?, ?, ?)",
-        (student_id, faixa, data_g, observacao or None, datetime.now().isoformat()),
+        (student_id, faixa, data_g, observacao or None, agora_br().isoformat()),
     )
     db.execute("UPDATE students SET real_belt = ? WHERE id = ?", (faixa, student_id))
     db.commit()
@@ -2581,7 +2754,7 @@ def admin_novo_exame(student_id):
     db.execute(
         "INSERT INTO exames_alunos (student_id, data, faixa_pretendida, resultado, observacao, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?)",
-        (student_id, data_e, faixa_pretendida or None, resultado, observacao or None, datetime.now().isoformat()),
+        (student_id, data_e, faixa_pretendida or None, resultado, observacao or None, agora_br().isoformat()),
     )
     db.commit()
     flash("Exame registrado.", "success")
@@ -2620,7 +2793,7 @@ def admin_novo_campeonato_aluno(student_id):
     db.execute(
         "INSERT INTO campeonatos_participacoes (student_id, nome_evento, data, categoria, resultado, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?)",
-        (student_id, nome_evento, data_c or None, categoria or None, resultado or None, datetime.now().isoformat()),
+        (student_id, nome_evento, data_c or None, categoria or None, resultado or None, agora_br().isoformat()),
     )
     db.commit()
     flash("Participação registrada.", "success")
@@ -2660,7 +2833,7 @@ def admin_nova_conquista(student_id):
     db = get_db()
     db.execute(
         "INSERT INTO conquistas (student_id, titulo, tipo, data, descricao, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (student_id, titulo, tipo, data_co or None, descricao or None, datetime.now().isoformat()),
+        (student_id, titulo, tipo, data_co or None, descricao or None, agora_br().isoformat()),
     )
     db.commit()
     flash("Conquista adicionada.", "success")
@@ -2698,7 +2871,7 @@ def admin_nova_observacao(student_id):
     db = get_db()
     db.execute(
         "INSERT INTO observacoes_aluno (student_id, texto, autor, created_at) VALUES (?, ?, ?, ?)",
-        (student_id, texto, autor, datetime.now().isoformat()),
+        (student_id, texto, autor, agora_br().isoformat()),
     )
     db.commit()
     flash("Observação salva.", "success")
@@ -2737,7 +2910,7 @@ def admin_novo_aluno():
     db = get_db()
     db.execute(
         "INSERT INTO students (name, nickname, pin, active, created_at) VALUES (?, ?, ?, 1, ?)",
-        (name, nickname or None, pin, datetime.now().isoformat()),
+        (name, nickname or None, pin, agora_br().isoformat()),
     )
     db.commit()
     flash(f"Aluno {name} cadastrado! PIN de acesso: {pin} (repasse esse número a ele). Adicione foto e mais dados na Ficha completa.", "success")
@@ -2774,9 +2947,23 @@ def admin_inativar_aluno(student_id):
     if not require_admin():
         return redirect(url_for("admin_login"))
     db = get_db()
-    db.execute("UPDATE students SET active = 0 WHERE id = ?", (student_id,))
+    # Inativar também encerra a cobrança (A4): o aluno deixa de receber
+    # mensalidades novas. As já lançadas continuam no histórico, sem mudança.
+    db.execute(
+        "UPDATE students SET active = 0, "
+        "billing_status = CASE WHEN billing_status = 'ativo' THEN 'inativo' ELSE billing_status END "
+        "WHERE id = ?",
+        (student_id,),
+    )
     db.commit()
-    flash("Aluno removido da lista ativa.", "info")
+    abertas = db.execute(
+        "SELECT COUNT(*) AS total FROM mensalidades WHERE student_id = ? AND status IN ('pendente', 'atrasado')",
+        (student_id,),
+    ).fetchone()["total"]
+    msg = "Aluno removido da lista ativa e cobrança encerrada (nenhuma mensalidade nova será gerada)."
+    if abertas:
+        msg += f" Atenção: ele ainda tem {abertas} mensalidade(s) em aberto — confira em Financeiro."
+    flash(msg, "info")
     return redirect(url_for("admin_alunos"))
 
 
@@ -2785,9 +2972,14 @@ def admin_reativar_aluno(student_id):
     if not require_admin():
         return redirect(url_for("admin_login"))
     db = get_db()
-    db.execute("UPDATE students SET active = 1 WHERE id = ?", (student_id,))
+    db.execute(
+        "UPDATE students SET active = 1, "
+        "billing_status = CASE WHEN billing_status = 'inativo' THEN 'ativo' ELSE billing_status END "
+        "WHERE id = ?",
+        (student_id,),
+    )
     db.commit()
-    flash("Aluno reativado.", "success")
+    flash("Aluno reativado. A cobrança volta a ser gerada (confira valor e vencimento na Ficha completa).", "success")
     return redirect(url_for("admin_alunos"))
 
 
@@ -2828,7 +3020,7 @@ def admin_novo_professor():
     db = get_db()
     db.execute(
         "INSERT INTO teachers (name, username, password_hash, active, created_at) VALUES (?, ?, ?, 1, ?)",
-        (name, username, generate_password_hash(senha), datetime.now().isoformat()),
+        (name, username, generate_password_hash(senha), agora_br().isoformat()),
     )
     db.commit()
     flash(f"Professor {name} cadastrado! Usuário de login: {username}.", "success")
@@ -2897,6 +3089,86 @@ def admin_reativar_professor(teacher_id):
     return redirect(url_for("admin_professores"))
 
 
+# --------------------------------------------------------------------------
+# Backup (A9): planilha com todas as tabelas, num clique. Ficam de fora só os
+# bytes das fotos (pesados; continuam no banco) e segredos (PIN e senhas).
+# --------------------------------------------------------------------------
+BACKUP_TABELAS = [
+    ("students", "Alunos"), ("teachers", "Professores"), ("checkins", "Presencas"),
+    ("mensalidades", "Mensalidades"), ("champions", "Campeoes"), ("eventos", "Avisos e eventos"),
+    ("graduacoes", "Graduacoes"), ("exames_alunos", "Exames"),
+    ("campeonatos_participacoes", "Campeonatos"), ("conquistas", "Conquistas"),
+    ("observacoes_aluno", "Observacoes"),
+]
+BACKUP_COLUNAS_OCULTAS = {"photo_data", "pin", "password_hash"}
+BACKUP_LEMBRETE_DIAS = 7
+
+
+def config_get(key):
+    row = get_db().execute("SELECT value FROM app_config WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def config_set(key, value):
+    db = get_db()
+    db.execute("DELETE FROM app_config WHERE key = ?", (key,))
+    db.execute("INSERT INTO app_config (key, value) VALUES (?, ?)", (key, value))
+    db.commit()
+
+
+def aviso_de_backup():
+    ultimo = config_get("ultimo_backup")
+    if not ultimo:
+        return "Nenhum backup baixado ainda."
+    dias = (hoje_br() - date.fromisoformat(ultimo[:10])).days
+    if dias >= BACKUP_LEMBRETE_DIAS:
+        return f"Último backup baixado há {dias} dias."
+    return None
+
+
+@app.route("/admin/backup")
+def admin_backup():
+    if not require_admin():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    wb = Workbook()
+    wb.remove(wb.active)
+    header_fill = PatternFill("solid", fgColor="11141B")
+    header_font = Font(bold=True, color="FFFFFF")
+    for tabela, aba in BACKUP_TABELAS:
+        rows = db.execute(f"SELECT * FROM {tabela} ORDER BY id").fetchall()
+        ws = wb.create_sheet(aba[:31])
+        if rows:
+            colunas = [c for c in rows[0].keys() if c not in BACKUP_COLUNAS_OCULTAS]
+        else:
+            cur = db.execute(f"SELECT * FROM {tabela} WHERE 1 = 0")
+            colunas = [d[0] for d in cur.description if d[0] not in BACKUP_COLUNAS_OCULTAS]
+        ws.append(colunas)
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+        for r in rows:
+            ws.append([r[c] for c in colunas])
+        for i, c in enumerate(colunas, start=1):
+            ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = max(12, min(40, len(c) + 4))
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    config_set("ultimo_backup", agora_br().isoformat(timespec="minutes"))
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"backup-elite-hapkido-{today_str()}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/healthz")
+def healthz():
+    """Resposta rápida, sem banco, para o ping que mantém o servidor acordado (A3)."""
+    return "ok", 200, {"Cache-Control": "no-store"}
+
+
 @app.route("/admin/campeoes")
 def admin_campeoes():
     if not require_admin():
@@ -2935,7 +3207,7 @@ def fechar_ano():
     try:
         db.execute(
             "INSERT INTO champions (year, student_id, total_checkins, closed_at) VALUES (?, ?, ?, ?)",
-            (year, winner["id"], winner["count"], datetime.now().isoformat()),
+            (year, winner["id"], winner["count"], agora_br().isoformat()),
         )
         db.commit()
         flash(f"{ano['label']} fechado! Campeão: {winner['name']} com {winner['count']} treinos.", "success")
@@ -2964,7 +3236,7 @@ def admin_mensalidades():
     ano_q = request.args.get("ano", "").strip()
     forma_q = request.args.get("forma_pagamento", "").strip()
 
-    today = date.today()
+    today = hoje_br()
     if not mes_q and not ano_q:
         mes_q, ano_q = str(today.month), str(today.year)
 
@@ -3149,7 +3421,7 @@ def admin_nova_mensalidade(student_id):
         db.execute(
             "INSERT INTO mensalidades (student_id, ref_month, ref_year, valor, due_date, status, "
             "payment_date, payment_method, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (student_id, ref_month, ref_year, valor, due_date, status, payment_date, payment_method, notes, datetime.now().isoformat()),
+            (student_id, ref_month, ref_year, valor, due_date, status, payment_date, payment_method, notes, agora_br().isoformat()),
         )
         db.commit()
         flash(f"Mensalidade de {month_name_pt(ref_month, ref_year)} lançada no histórico.", "success")

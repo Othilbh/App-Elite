@@ -17,7 +17,9 @@
 </section>
 
 <form method="post" id="chamada-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="data" value="{{ data }}">
+  <input type="hidden" name="presentes_originais" value="{{ presentes|join(',') }}">
   <section>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
       <h2 style="margin:0;">Alunos ativos ({{ students|length }})</h2>

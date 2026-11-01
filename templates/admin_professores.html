@@ -9,6 +9,7 @@
 <section class="form-card">
   <h2>Cadastrar novo professor</h2>
   <form method="post" action="{{ url_for('admin_novo_professor') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="name">Nome do professor</label>
     <input type="text" id="name" name="name" required>
 
@@ -35,6 +36,7 @@
           {% if not p.active %}<span class="badge badge-rejected">Inativo</span>{% endif %}
         </div>
         <form method="post" action="{{ url_for('admin_editar_professor', teacher_id=p.id) }}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="text" name="name" value="{{ p.name }}" placeholder="Nome" style="width:130px;">
           <input type="text" name="username" value="{{ p.username or '' }}" placeholder="Usuário" style="width:110px;">
           <input type="password" name="senha" placeholder="Nova senha (opcional)" autocomplete="new-password" style="width:150px;">
@@ -42,10 +44,12 @@
         </form>
         {% if p.active %}
           <form method="post" action="{{ url_for('admin_inativar_professor', teacher_id=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-reject btn-small">Remover</button>
           </form>
         {% else %}
           <form method="post" action="{{ url_for('admin_reativar_professor', teacher_id=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-approve btn-small">Reativar</button>
           </form>
         {% endif %}

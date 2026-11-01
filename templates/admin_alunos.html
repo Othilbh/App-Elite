@@ -9,6 +9,7 @@
 <section class="form-card">
   <h2>Cadastrar novo aluno</h2>
   <form method="post" action="{{ url_for('admin_novo_aluno') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="name">Nome completo</label>
     <input type="text" id="name" name="name" required>
 
@@ -56,6 +57,7 @@
             {% if ind == 'green' %}🟢{% elif ind == 'yellow' %}🟡{% elif ind == 'red' %}🔴{% endif %}
             {{ s.nickname or s.name }}
           </strong>
+          {% if em_atraso.get(s.id) %}<span class="badge badge-rejected" style="font-size:0.75rem;">{{ em_atraso[s.id]|reais }} em atraso</span>{% endif %}
           {% if s.nickname %}<span class="muted">{{ s.name }}</span>{% endif %}
           {% if s.real_belt %}<span class="muted">🥋 {{ s.real_belt }}</span>{% endif %}
           {% if s.pin %}
@@ -73,14 +75,17 @@
         <a href="{{ url_for('admin_editar_aluno', student_id=s.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Ficha completa</a>
         <form method="post" action="{{ url_for('admin_novo_pin', student_id=s.id) }}"
               {% if s.pin_is_custom %}onsubmit="return confirm('Esse aluno já escolheu o próprio PIN. Gerar um novo vai substituir a senha dele. Continuar?');"{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-small" style="background:#262a33;color:var(--text);">Gerar novo PIN</button>
         </form>
         {% if s.active %}
-          <form method="post" action="{{ url_for('admin_inativar_aluno', student_id=s.id) }}">
+          <form method="post" action="{{ url_for('admin_inativar_aluno', student_id=s.id) }}" onsubmit="return confirm('Inativar este aluno? A cobrança de novas mensalidades também será encerrada. O histórico é mantido.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-reject btn-small">Remover</button>
           </form>
         {% else %}
           <form method="post" action="{{ url_for('admin_reativar_aluno', student_id=s.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-approve btn-small">Reativar</button>
           </form>
         {% endif %}

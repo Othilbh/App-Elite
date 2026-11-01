@@ -124,6 +124,7 @@
   <details>
     <summary>🔒 Alterar meu PIN</summary>
     <form method="post" action="{{ url_for('alterar_pin', student_id=student.id) }}" style="margin-top:10px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label for="novo_pin">Novo PIN (4 números)</label>
       <input type="password" id="novo_pin" name="novo_pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required
              style="text-align:center;letter-spacing:6px;">

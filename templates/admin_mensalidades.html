@@ -35,6 +35,7 @@
 </section>
 
 <form method="post" action="{{ url_for('admin_gerar_mensalidades') }}" style="margin-bottom:12px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit" class="btn btn-primary btn-big">📅 Gerar mensalidades do próximo mês (alunos ativos)</button>
 </form>
 
@@ -148,6 +149,7 @@
           <div class="fin-actions">
             {% if m.status in ('pendente', 'atrasado') %}
               <form method="post" action="{{ url_for('admin_pagar_mensalidade', mensalidade_id=m.id) }}" class="fin-pay-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <select name="payment_method" required>
                   <option value="">Forma...</option>
                   {% for value, label in PAYMENT_METHODS %}
@@ -157,12 +159,14 @@
                 <button type="submit" class="btn btn-approve btn-small">Registrar pagamento</button>
               </form>
               <form method="post" action="{{ url_for('admin_isentar_mensalidade', mensalidade_id=m.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-small" style="background:#262a33;color:var(--text);">Isentar</button>
               </form>
             {% endif %}
             <a href="{{ url_for('admin_editar_mensalidade', mensalidade_id=m.id) }}" class="btn btn-small" style="background:#262a33;color:var(--text);text-decoration:none;">Editar</a>
             <form method="post" action="{{ url_for('admin_excluir_mensalidade', mensalidade_id=m.id) }}"
                   onsubmit="return confirm('Excluir esse registro de mensalidade? Não dá pra desfazer.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-reject btn-small">Excluir</button>
             </form>
           </div>

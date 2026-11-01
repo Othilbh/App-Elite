@@ -9,6 +9,7 @@
 
 <section class="form-card">
   <form method="post" action="{{ url_for('admin_editar_mensalidade', mensalidade_id=m.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="valor">Valor (R$)</label>
     <input type="text" id="valor" name="valor" value="{{ m.valor }}" inputmode="decimal" required>
 

@@ -10,6 +10,7 @@
 <section class="form-card">
   <h2 style="margin-top:0;">Publicar novo</h2>
   <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="tipo">Tipo</label>
     <select id="tipo" name="tipo" required>
       <option value="aviso">Aviso geral</option>
@@ -50,6 +51,7 @@
             {% if it.descricao %}<span class="muted">{{ it.descricao }}</span>{% endif %}
           </div>
           <form method="post" action="{{ url_for('admin_remover_evento', evento_id=it.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-small btn-reject">Remover</button>
           </form>
         </li>

@@ -52,6 +52,7 @@
   <h2>🗓️ Lançar mensalidade no histórico</h2>
   <p class="muted" style="font-size:0.8rem;margin-top:-4px;">Use pra registrar meses anteriores (de antes do app) ou qualquer mês que não tenha sido gerado automaticamente.</p>
   <form method="post" action="{{ url_for('admin_nova_mensalidade', student_id=student.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="display:flex;gap:8px;">
       <div style="flex:1;">
         <label for="ref_month">Mês</label>

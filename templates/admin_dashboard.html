@@ -9,6 +9,12 @@
   {% else %}
     <p class="badge badge-rejected">🔴 Banco: SQLite local — DATABASE_URL não está configurada! Os dados serão perdidos no próximo deploy.</p>
   {% endif %}
+  {% if aviso_secret_key %}
+    <p class="badge badge-rejected">🔴 Segurança: a variável SECRET_KEY não está configurada no Render (ou é fraca). Configure uma chave longa e aleatória em Environment → SECRET_KEY.</p>
+  {% endif %}
+  {% if aviso_backup %}
+    <p class="badge badge-pending">💾 {{ aviso_backup }} <a href="{{ url_for('admin_backup') }}" style="text-decoration:underline;">Baixar backup agora</a></p>
+  {% endif %}
 </section>
 
 <section class="stats-grid">
@@ -52,9 +58,11 @@
           </div>
           <div class="pending-actions">
             <form method="post" action="{{ url_for('aprovar_checkin', checkin_id=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-approve">Confirmar</button>
             </form>
             <form method="post" action="{{ url_for('rejeitar_checkin', checkin_id=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-reject">Rejeitar</button>
             </form>
           </div>

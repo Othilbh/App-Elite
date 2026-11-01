@@ -1,0 +1,19 @@
+# Mantém o App Elite acordado no plano gratuito do Render (A3).
+# O Render desliga o servidor após ~15 min sem acessos, e a próxima abertura
+# leva 50 s ou mais. Este agendamento do GitHub acessa /healthz a cada 10 min.
+# Observação: o GitHub pode atrasar execuções agendadas e pausa agendamentos
+# de repositórios sem atividade por 60 dias (basta reativar em Actions).
+name: Manter app acordado
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Acessar /healthz
+        run: curl -fsS --retry 3 --retry-delay 20 --max-time 90 https://app-elite.onrender.com/healthz

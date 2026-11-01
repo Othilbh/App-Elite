@@ -11,12 +11,18 @@
 
 <section class="form-card">
   <form method="post" action="{{ url_for('admin_editar_aluno', student_id=student.id) }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="photo">Foto</label>
     {% if student.photo %}
       <img src="{{ url_for('uploaded_file', filename=student.photo) }}" alt="{{ student.name }}"
            style="width:64px;height:64px;border-radius:50%;object-fit:cover;margin-bottom:6px;">
     {% endif %}
     <input type="file" id="photo" name="photo" accept="image/*">
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-weight:normal;">
+      <input type="checkbox" name="image_consent" {% if student.image_consent %}checked{% endif %} style="width:auto;margin-top:3px;">
+      <span>Uso de imagem autorizado (pelo aluno ou, se menor de idade, pelo responsável). Sem autorização, a foto aparece só para o professor e para o próprio aluno.
+        {% if student.image_consent and student.image_consent_at %}<span class="muted">Autorizado em {{ student.image_consent_at.replace('T', ' ') }}.</span>{% endif %}</span>
+    </label>
 
     <label for="birth_date">Data de nascimento</label>
     <input type="date" id="birth_date" name="birth_date" value="{{ student.birth_date or '' }}">
@@ -76,6 +82,7 @@
 <section class="form-card">
   <h2 style="margin-top:0;">🥋 Graduações</h2>
   <form method="post" action="{{ url_for('admin_nova_graduacao', student_id=student.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="faixa">Nova faixa</label>
     <input type="text" id="faixa" name="faixa" required placeholder="ex: Faixa Azul">
     <label for="data_graduacao">Data</label>
@@ -93,6 +100,7 @@
             <span class="muted">{{ g.data }}{% if g.observacao %} · {{ g.observacao }}{% endif %}</span>
           </div>
           <form method="post" action="{{ url_for('admin_remover_graduacao', student_id=student.id, item_id=g.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-small btn-reject">Remover</button>
           </form>
         </li>
@@ -106,6 +114,7 @@
 <section class="form-card">
   <h2 style="margin-top:0;">📋 Exames de faixa</h2>
   <form method="post" action="{{ url_for('admin_novo_exame', student_id=student.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="data_exame">Data do exame</label>
     <input type="date" id="data_exame" name="data" required>
     <label for="faixa_pretendida">Faixa pretendida</label>
@@ -132,6 +141,7 @@
             </span>
           </div>
           <form method="post" action="{{ url_for('admin_remover_exame', student_id=student.id, item_id=e.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-small btn-reject">Remover</button>
           </form>
         </li>
@@ -145,6 +155,7 @@
 <section class="form-card">
   <h2 style="margin-top:0;">🏆 Campeonatos</h2>
   <form method="post" action="{{ url_for('admin_novo_campeonato_aluno', student_id=student.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="nome_evento">Nome do campeonato</label>
     <input type="text" id="nome_evento" name="nome_evento" required placeholder="ex: Campeonato Brasileiro">
     <label for="data_campeonato">Data</label>
@@ -164,6 +175,7 @@
             <span class="muted">{{ c.data or "" }}{% if c.categoria %} · {{ c.categoria }}{% endif %}{% if c.resultado %} · {{ c.resultado }}{% endif %}</span>
           </div>
           <form method="post" action="{{ url_for('admin_remover_campeonato_aluno', student_id=student.id, item_id=c.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-small btn-reject">Remover</button>
           </form>
         </li>
@@ -177,6 +189,7 @@
 <section class="form-card">
   <h2 style="margin-top:0;">⭐ Medalhas e conquistas</h2>
   <form method="post" action="{{ url_for('admin_nova_conquista', student_id=student.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="titulo_conquista">Título</label>
     <input type="text" id="titulo_conquista" name="titulo" required placeholder="ex: Medalha de ouro — Brasileiro 2026">
     <label for="tipo_conquista">Tipo</label>
@@ -201,6 +214,7 @@
             <span class="muted">{{ co.data or "" }}{% if co.descricao %} · {{ co.descricao }}{% endif %}</span>
           </div>
           <form method="post" action="{{ url_for('admin_remover_conquista', student_id=student.id, item_id=co.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-small btn-reject">Remover</button>
           </form>
         </li>
@@ -214,6 +228,7 @@
 <section class="form-card">
   <h2 style="margin-top:0;">📝 Observações do professor</h2>
   <form method="post" action="{{ url_for('admin_nova_observacao', student_id=student.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="texto_observacao">Nova observação</label>
     <textarea id="texto_observacao" name="texto" rows="3" required placeholder="Visível só para professores/admin"></textarea>
     <button type="submit" class="btn btn-small btn-primary">Salvar observação</button>
@@ -227,6 +242,7 @@
             <span class="muted">{{ o.created_at[:10] }}{% if o.autor %} · {{ o.autor }}{% endif %}</span>
           </div>
           <form method="post" action="{{ url_for('admin_remover_observacao', student_id=student.id, item_id=o.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-small btn-reject">Remover</button>
           </form>
         </li>
